@@ -415,17 +415,20 @@ function virtualEmailFromUserName(userName){
 function firebaseErrorMessage(err){
   const code = err && err.code ? err.code : "";
   const map = {
-    "auth/email-already-in-use":"這個帳號已經被註冊。",
+    "auth/email-already-in-use":"這個帳號已經被註冊。若剛剛註冊時看到網路錯誤，通常代表帳號其實已建立，請直接登入。",
     "auth/invalid-email":"帳號格式不正確。",
     "auth/weak-password":"密碼強度不足，請至少 6 碼。",
     "auth/user-not-found":"找不到這個帳號。",
     "auth/wrong-password":"密碼錯誤。",
     "auth/invalid-credential":"帳號或密碼錯誤。",
+    "auth/network-request-failed":"Firebase 網路連線失敗或逾時。帳號可能已建立成功，系統會嘗試自動登入；若仍失敗，請重新整理後直接登入。",
+    "auth/too-many-requests":"短時間嘗試太多次，Firebase 暫時限制請求。請稍後再試。",
     "auth/popup-closed-by-user":"你已關閉 Google 登入視窗。",
     "auth/popup-blocked":"瀏覽器阻擋彈出登入視窗，請允許彈出視窗或改用重新導向登入。",
     "auth/unauthorized-domain":"這個網域尚未加入 Firebase Authentication 的 Authorized domains。",
     "auth/permission-denied":"Firestore 權限不足，請檢查 Firestore Rules。",
     "permission-denied":"Firestore 權限不足，請檢查 Firestore Rules。",
+    "unavailable":"Firestore 目前連線失敗或服務暫時不可用，請稍後重試。",
     "auth/operation-not-allowed":"Firebase Console 尚未啟用這個登入方式。"
   };
   return map[code] || (err && err.message ? err.message : String(err));
@@ -455,9 +458,11 @@ async function loginMember(){
 
 async function registerMember(){
   if(!auth || !db){ alert("Firebase 尚未設定，無法建立帳號。"); return; }
+
   const userName = normalizeUserName($("loginUserInput").value);
   const password = String($("loginPassInput").value || "");
   const displayName = String($("registerDisplayInput").value || userName).trim() || userName;
+  const email = virtualEmailFromUserName(userName);
 
   if(!validateUserName(userName)){
     alert("帳號需為 3～30 碼，只能使用英文、數字、底線、連字號、小數點。\n請在『使用者帳號』欄位輸入。");
@@ -465,29 +470,83 @@ async function registerMember(){
   }
   if(password.length < 6){ alert("密碼至少 6 碼。請在『密碼』欄位輸入。"); return; }
 
+  $("registerBtn").disabled = true;
+  setAuthStatus("建立帳號中...", "guest");
+
+  let cred = null;
+
+  // 第一步：建立 Firebase Authentication 帳號。
+  // 注意：有時候網路逾時時，Firebase 後端其實已經建立成功，但前端仍會丟出 auth/network-request-failed。
+  // 所以這裡不能直接顯示「建立失敗」，而是會再嘗試登入確認。
   try{
-    $("registerBtn").disabled = true;
-    setAuthStatus("建立帳號中...", "guest");
-    const cred = await auth.createUserWithEmailAndPassword(virtualEmailFromUserName(userName), password);
-    await cred.user.updateProfile({displayName});
-    await db.collection("users").doc(cred.user.uid).collection("profile").doc("main").set({
-      uid: cred.user.uid,
+    cred = await auth.createUserWithEmailAndPassword(email, password);
+    setAuthStatus(`帳號 ${userName} 已建立成功，正在寫入會員資料...`, "loginOk");
+  }catch(e){
+    console.warn("建立帳號流程回傳錯誤，準備檢查是否其實已建立成功", e);
+
+    const mayAlreadyCreated = e && (
+      e.code === "auth/network-request-failed" ||
+      e.code === "auth/email-already-in-use"
+    );
+
+    if(mayAlreadyCreated){
+      try{
+        setAuthStatus("帳號可能已建立成功，正在嘗試直接登入確認...", "guest");
+        cred = await auth.signInWithEmailAndPassword(email, password);
+        setAuthStatus(`帳號 ${userName} 已存在或已建立成功，已自動登入。正在補寫會員資料...`, "loginOk");
+      }catch(loginError){
+        console.error("註冊後自動登入確認失敗", loginError);
+        const prefix = e.code === "auth/email-already-in-use"
+          ? "這個帳號已經存在，但無法用目前密碼登入："
+          : "建立帳號時網路異常，且自動登入確認失敗：";
+        setAuthStatus(prefix + firebaseErrorMessage(loginError) + " 請重新整理頁面後，改按『登入並啟用紀錄』。", "error");
+        updateAuthButtons();
+        return;
+      }
+    }else{
+      setAuthStatus("建立帳號失敗：" + firebaseErrorMessage(e), "error");
+      updateAuthButtons();
+      return;
+    }
+  }
+
+  const user = cred && cred.user ? cred.user : auth.currentUser;
+  if(!user){
+    setAuthStatus("帳號建立流程完成，但目前瀏覽器沒有取得登入狀態。請重新整理後直接登入。", "error");
+    updateAuthButtons();
+    return;
+  }
+
+  // 第二步：更新 Firebase Auth 的 displayName。失敗不代表帳號建立失敗。
+  try{
+    await user.updateProfile({displayName});
+  }catch(e){
+    console.warn("更新暱稱失敗，但帳號已建立/已登入", e);
+  }
+
+  // 第三步：寫入 Firestore profile。失敗不代表帳號建立失敗，只代表會員資料或錯題雲端紀錄暫時有問題。
+  try{
+    const ref = db.collection("users").doc(user.uid).collection("profile").doc("main");
+    await ref.set({
+      uid: user.uid,
       userName,
       displayName,
-      email: cred.user.email || "",
+      email: user.email || "",
       providerId: "password",
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, {merge:true});
+
     $("loginPassInput").value = "";
-    setAuthStatus(`目前：${displayName} 已登入。考完後錯題會寫入 Firestore。`, "loginOk");
+    setAuthStatus(`目前：${displayName} 已登入。會員資料已寫入，考完後錯題會寫入 Firestore。`, "loginOk");
   }catch(e){
-    setAuthStatus("建立帳號失敗：" + firebaseErrorMessage(e), "error");
+    console.error("Firestore profile 寫入失敗，但帳號已建立/已登入", e);
+    $("loginPassInput").value = "";
+    setAuthStatus(`目前：${displayName} 已登入，但會員資料寫入 Firestore 失敗：${firebaseErrorMessage(e)}。可以先練習；若錯題無法同步，請檢查 Firestore API 與 Rules。`, "error");
   }finally{
     updateAuthButtons();
   }
 }
-
 async function loginWithGoogle(){
   if(!auth || !db){ alert("Firebase 尚未設定，無法使用 Google 登入。"); return; }
   try{
@@ -1108,4 +1167,3 @@ loadBank();
 </script>
 </body>
 </html>
-
