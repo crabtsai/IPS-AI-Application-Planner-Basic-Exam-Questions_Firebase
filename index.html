@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI應用規劃師｜初級模擬考練習 Firebase 版 _ FB 雲橫介工程師 分享</title>
+  <style>
+    :root{
+      --bg:#f6f7fb; --card:#ffffff; --text:#1f2937; --muted:#6b7280;
+      --main:#2563eb; --ok:#16a34a; --bad:#dc2626; --line:#e5e7eb;
+      --warn:#f59e0b;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--text)}
+    .wrap{max-width:920px;margin:0 auto;padding:20px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 8px 22px rgba(15,23,42,.06);margin-bottom:16px}
+    h1{font-size:24px;margin:0 0 8px}
+    h2{font-size:18px;margin:0 0 10px}
+    .muted{color:var(--muted);font-size:14px;line-height:1.6}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    input,select{border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:15px;background:white;color:var(--text)}
+    input[type="number"]{width:110px}
+    button{border:0;border-radius:12px;padding:10px 14px;font-size:15px;cursor:pointer;background:var(--main);color:white;font-weight:700}
+    button.secondary{background:#111827}
+    button.ghost{background:#eef2ff;color:#1e40af}
+    button.warn{background:var(--warn);color:#111827}
+    button:disabled{opacity:.45;cursor:not-allowed}
+    .pill{display:inline-flex;padding:6px 10px;border-radius:999px;background:#eef2ff;color:#1e40af;font-size:13px;font-weight:700}
+    .qtitle{font-size:18px;line-height:1.7;font-weight:750;white-space:pre-wrap}
+    .option{display:block;width:100%;text-align:left;background:white;color:var(--text);border:1px solid var(--line);padding:13px 14px;border-radius:14px;margin:10px 0;font-weight:600}
+    .option:hover{border-color:#93c5fd;background:#f8fbff}
+    .option.selected{border-color:var(--main);background:#eff6ff}
+    .option.correct{border-color:var(--ok);background:#ecfdf5;color:#065f46}
+    .option.wrong{border-color:var(--bad);background:#fef2f2;color:#991b1b}
+    .result{font-weight:800;font-size:18px;margin-top:12px}
+    .ok{color:var(--ok)} .bad{color:var(--bad)}
+    .bar{height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin-top:8px}
+    .bar>div{height:100%;background:var(--main);width:0%}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+    .stat{padding:12px;border-radius:14px;background:#f9fafb;border:1px solid var(--line);text-align:center}
+    .stat b{display:block;font-size:22px;margin-bottom:4px}
+    .hidden{display:none}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    th,td{border-bottom:1px solid var(--line);padding:10px;text-align:left;vertical-align:top}
+    th{background:#f9fafb}
+    .small{font-size:13px}
+    .summaryBox{margin-top:14px;padding:12px;border-radius:14px;background:#f9fafb;border:1px solid var(--line);line-height:1.7}
+    .passBox{color:#065f46;background:#ecfdf5;border:1px solid #bbf7d0}
+    .failBox{color:#991b1b;background:#fef2f2;border:1px solid #fecaca}
+    .wrongCard{border:1px solid var(--line);border-radius:16px;background:#fff;padding:14px;margin:12px 0}
+    .wrongCard h3{font-size:16px;margin:0 0 8px;line-height:1.6}
+    .answerLine{margin:8px 0;line-height:1.7}
+    .optionList{margin-top:8px;padding-left:0;list-style:none}
+    .optionList li{padding:7px 9px;border-radius:10px;margin:6px 0;background:#f9fafb;border:1px solid var(--line)}
+    .optionList li.correctOpt{background:#ecfdf5;border-color:#86efac;color:#065f46;font-weight:700}
+    .optionList li.wrongOpt{background:#fef2f2;border-color:#fca5a5;color:#991b1b;font-weight:700}
+    .scopeFilter{margin-top:14px;padding:14px;border:1px solid var(--line);border-radius:16px;background:#f9fafb}
+    .scopeHeader{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
+    .scopeActions{display:flex;gap:8px;flex-wrap:wrap}
+    .scopeActions button{padding:8px 10px;font-size:13px}
+    .scopeGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    .scopeItem{display:flex;align-items:center;gap:8px;padding:9px 10px;border:1px solid var(--line);border-radius:12px;background:white;line-height:1.4;font-size:14px;cursor:pointer}
+    .scopeItem input{width:auto;margin:0;padding:0;flex:0 0 auto}
+    .scopeItem span:nth-child(2){min-width:0;overflow:hidden;text-overflow:ellipsis}
+    .scopeCount{color:var(--muted);font-size:12px;margin-left:auto;white-space:nowrap;flex:0 0 auto}
+    .titleRow{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+    .themeToggle{white-space:nowrap}
+    .authStatus{padding:10px 12px;border-radius:14px;border:1px solid var(--line);background:#f9fafb;line-height:1.6;font-size:14px;font-weight:700;margin-bottom:12px}
+    .authStatus.loginOk{background:#ecfdf5;border-color:#86efac;color:#065f46}
+    .authStatus.guest{background:#fff7ed;border-color:#fed7aa;color:#9a3412}
+    .authStatus.error{background:#fef2f2;border-color:#fca5a5;color:#991b1b}
+    .authGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+    .authGrid label{font-size:14px;font-weight:700;line-height:1.7}
+    .authGrid input{width:100%;margin-top:4px}
+    .registerPanel{margin-top:12px;padding:12px;border-radius:16px;background:#f9fafb;border:1px solid var(--line)}
+    .registerPanel summary{cursor:pointer;font-weight:800;color:#1e40af;list-style:none}
+    .registerPanel summary::-webkit-details-marker{display:none}
+    .registerPanel summary:before{content:'＋';display:inline-block;margin-right:6px;font-weight:900}
+    .registerPanel[open] summary:before{content:'－'}
+    .configBox{background:#fff7ed;border-color:#fed7aa;color:#9a3412}
+    code{background:#f3f4f6;border:1px solid var(--line);border-radius:6px;padding:1px 5px}
+
+    html[data-theme="dark"]{
+      --bg:#0f172a; --card:#111827; --text:#e5e7eb; --muted:#9ca3af;
+      --main:#60a5fa; --ok:#4ade80; --bad:#f87171; --line:#334155; --warn:#fbbf24;
+    }
+    html[data-theme="dark"] body{background:var(--bg);color:var(--text)}
+    html[data-theme="dark"] .card,
+    html[data-theme="dark"] .wrongCard{background:var(--card);border-color:var(--line);box-shadow:0 8px 22px rgba(0,0,0,.28)}
+    html[data-theme="dark"] input,
+    html[data-theme="dark"] select{background:#0b1220;color:var(--text);border-color:var(--line)}
+    html[data-theme="dark"] button.secondary{background:#374151;color:#f9fafb}
+    html[data-theme="dark"] button.ghost{background:#1e3a8a;color:#dbeafe}
+    html[data-theme="dark"] .pill{background:#1e3a8a;color:#dbeafe}
+    html[data-theme="dark"] .bar{background:#334155}
+    html[data-theme="dark"] .option{background:#0b1220;color:var(--text);border-color:var(--line)}
+    html[data-theme="dark"] .option:hover{border-color:#60a5fa;background:#172554}
+    html[data-theme="dark"] .option.selected{border-color:#60a5fa;background:#1e3a8a;color:#dbeafe}
+    html[data-theme="dark"] .option.correct{border-color:#22c55e;background:#052e16;color:#bbf7d0}
+    html[data-theme="dark"] .option.wrong{border-color:#ef4444;background:#450a0a;color:#fecaca}
+    html[data-theme="dark"] .stat,
+    html[data-theme="dark"] th,
+    html[data-theme="dark"] .summaryBox,
+    html[data-theme="dark"] .optionList li{background:#0b1220;border-color:var(--line)}
+    html[data-theme="dark"] td,
+    html[data-theme="dark"] th{border-bottom-color:var(--line)}
+    html[data-theme="dark"] .passBox{color:#bbf7d0;background:#052e16;border-color:#166534}
+    html[data-theme="dark"] .failBox{color:#fecaca;background:#450a0a;border-color:#991b1b}
+    html[data-theme="dark"] .optionList li.correctOpt{background:#052e16;border-color:#22c55e;color:#bbf7d0}
+    html[data-theme="dark"] .optionList li.wrongOpt{background:#450a0a;border-color:#ef4444;color:#fecaca}
+    html[data-theme="dark"] .scopeFilter{background:#0b1220;border-color:var(--line)}
+    html[data-theme="dark"] .scopeItem{background:#111827;border-color:var(--line)}
+    html[data-theme="dark"] .registerPanel{background:#0b1220;border-color:var(--line)}
+    html[data-theme="dark"] .registerPanel summary{color:#dbeafe}
+    html[data-theme="dark"] .authStatus.loginOk{background:#052e16;border-color:#22c55e;color:#bbf7d0}
+    html[data-theme="dark"] .authStatus.guest{background:#451a03;border-color:#92400e;color:#fed7aa}
+    html[data-theme="dark"] .authStatus.error{background:#450a0a;border-color:#ef4444;color:#fecaca}
+    html[data-theme="dark"] .configBox{background:#451a03;border-color:#92400e;color:#fed7aa}
+    html[data-theme="dark"] code{background:#0b1220;border-color:var(--line)}
+
+    @media(max-width:650px){
+      .wrap{padding:12px}
+      .grid{grid-template-columns:repeat(2,1fr)}
+      h1{font-size:21px}
+      .qtitle{font-size:17px}
+      button,input,select{width:100%}
+      .titleRow{flex-direction:column}
+      .themeToggle{width:100%}
+      .scopeHeader{flex-direction:column}
+      .scopeActions{width:100%}
+      .scopeActions button{width:calc(50% - 4px)}
+      .scopeGrid{grid-template-columns:1fr}
+      .scopeItem input{width:auto}
+      .authGrid{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="titleRow">
+      <h1>AI應用規劃師｜初級｜模擬考練習 Firebase 版 _ FB 雲橫介工程師 分享</h1>
+      <button class="ghost themeToggle" id="themeToggleBtn" type="button">🌙 夜間模式</button>
+    </div>
+    <div class="muted">
+      題庫來源：Google Sheet。錯題紀錄來源：Firebase Authentication + Cloud Firestore。<br>
+      題庫欄位支援：<b>題號、範圍、題目類型、題目、選項1、選項2、選項3、選項4、正確答案、解析</b>。
+    </div>
+  </div>
+
+  <div id="firebaseConfigNotice" class="card configBox hidden">
+    <h2>Firebase 尚未設定</h2>
+    <div class="small">
+      請先到程式碼最上方的 <code>firebaseConfig</code> 貼上你的 Firebase Web App 設定。未設定前仍可訪客練習，但會員登入與雲端錯題紀錄不會啟用。
+    </div>
+  </div>
+
+  <div id="memberBox" class="card">
+    <h2>會員錯題紀錄</h2>
+    <div id="authStatus" class="authStatus guest">Firebase 初始化中...</div>
+    <div class="authGrid">
+      <label>使用者帳號
+        <input id="loginUserInput" type="text" placeholder="例如：cloud001" autocomplete="username">
+      </label>
+      <label>密碼
+        <input id="loginPassInput" type="password" placeholder="請輸入密碼" autocomplete="current-password">
+      </label>
+      <label>顯示名稱 / 暱稱
+        <input id="registerDisplayInput" type="text" placeholder="註冊時可填，例如：雲橫介">
+      </label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="loginBtn" type="button">登入並啟用紀錄</button>
+      <button class="ghost" id="registerBtn" type="button">建立帳號並登入</button>
+      <button class="ghost" id="googleLoginBtn" type="button">Google 登入</button>
+      <button class="secondary" id="logoutBtn" type="button" disabled>登出</button>
+      <button class="ghost" id="historyWrongBtn" type="button">錯題內容複習</button>
+    </div>
+    <div class="authHint muted small" style="margin-top:10px">
+      未登入就是訪客模式，可以練習但不會記錄雲端錯題。登入後 Firestore 只存：使用者 UID、題號、範圍、錯誤次數、最後選項、正確答案、最後錯誤時間；不重複存題目全文。
+    </div>
+  </div>
+
+  <div id="setup" class="card">
+    <h2>考前設定</h2>
+    <div class="row">
+      <label>題數 <input id="countInput" type="number" min="1" value="20"></label>
+      <label>模式
+        <select id="modeInput">
+          <option value="instant">練習模式：每題立即看答案</option>
+          <option value="exam">考試模式：最後才看結果</option>
+        </select>
+      </label>
+      <button id="startBtn">開始模擬考</button>
+      <button class="ghost" id="reloadBtn">重新讀取題庫</button>
+    </div>
+
+    <div id="scopeFilterBox" class="scopeFilter hidden">
+      <div class="scopeHeader">
+        <div>
+          <b>選擇練習範圍</b>
+          <div id="scopeSummary" class="muted small">預設全選，可取消不想練的範圍。</div>
+        </div>
+        <div class="scopeActions">
+          <button class="ghost" id="selectAllScopesBtn" type="button">全選</button>
+          <button class="ghost" id="clearScopesBtn" type="button">清除</button>
+        </div>
+      </div>
+      <div id="scopeList" class="scopeGrid"></div>
+    </div>
+
+    <p id="loadMsg" class="muted">正在讀取題庫...</p>
+    <p class="muted small">Firebase 版可以部署到 Firebase Hosting，也可以放 GitHub Pages。題庫仍從公開 Google Sheet 讀取。</p>
+  </div>
+
+  <div id="quiz" class="card hidden">
+    <div class="row" style="justify-content:space-between">
+      <span class="pill" id="progressText">第 1 / 20 題</span>
+      <span class="pill" id="scoreText">目前答對：0</span>
+    </div>
+    <div class="bar"><div id="progressBar"></div></div>
+    <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+    <div id="questionText" class="qtitle"></div>
+    <div id="options"></div>
+    <div id="feedback" class="muted"></div>
+    <div class="row" style="margin-top:14px">
+      <button id="submitBtn">確認答案</button>
+      <button class="secondary" id="nextBtn" disabled>下一題</button>
+    </div>
+  </div>
+
+  <div id="finish" class="card hidden">
+    <h2>測驗結果</h2>
+    <div id="finalStatus" class="summaryBox"></div>
+    <p id="finalSummary" class="muted"></p>
+    <div class="grid">
+      <div class="stat"><b id="finalScore">0</b>得分</div>
+      <div class="stat"><b id="finalTotal">100</b>總分</div>
+      <div class="stat"><b id="finalCorrect">0</b>答對</div>
+      <div class="stat"><b id="finalWrong">0</b>答錯</div>
+      <div class="stat"><b id="finalRate">0%</b>正確率</div>
+      <div class="stat"><b id="finalPoint">0</b>每題分數</div>
+    </div>
+    <div id="weakPoint" class="summaryBox"></div>
+    <div class="row" style="margin-top:14px">
+      <button id="againBtn">再考一次</button>
+      <button class="ghost" id="reviewBtn">查看本次錯題解析</button>
+      <button class="secondary" id="practiceWrongBtn">只練本次錯題</button>
+      <button class="ghost" id="historyWrongBtnFinish" type="button">錯題內容複習</button>
+    </div>
+  </div>
+
+  <div id="review" class="card hidden">
+    <h2>錯題複習與預習</h2>
+    <p class="muted small">這裡會列出你本次答錯的題目、你的答案、正確答案與解析。登入後，下次可按「錯題內容複習」練歷史錯題。</p>
+    <div id="reviewTable"></div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+<script>
+// ===== 1) Firebase 設定：請到 Firebase Console → Project settings → Your apps → Web app 複製設定貼在這裡 =====
+
+const firebaseConfig = {
+  apiKey: "AIzaSyChsmSHNElQYVUNSiblN6LiYKbScP5EpkY",
+  authDomain: "ips-ai-application-basic-exam.firebaseapp.com",
+  projectId: "ips-ai-application-basic-exam",
+  storageBucket: "ips-ai-application-basic-exam.firebasestorage.app",
+  messagingSenderId: "1096961993447",
+  appId: "1:1096961993447:web:9d4633a21476f192f31042",
+  measurementId: "G-JW9645CDJP"
+};
+
+
+// 使用者輸入 userName 時，底層會轉成 userName@ipas-exam.local 給 Firebase Auth 使用。
+// 不用真的存在這個網域，也不會寄信。
+const AUTH_EMAIL_DOMAIN = "ipas-exam.local";
+
+// ===== 2) 題庫 Google Sheet 設定 =====
+const SHEET_ID = "1EEBoG6cWlhsnrkstmQakv2ZNJ7TymplYewcX30E3Khw";
+const GID = "0";
+const TOTAL_SCORE = 100;
+const PASS_SCORE = 70;
+
+let bank = [];
+let quiz = [];
+let index = 0;
+let selected = null;
+let answers = [];
+let correctCount = 0;
+let mode = "instant";
+let scopeMeta = [];
+let selectedScopes = new Set();
+let app = null;
+let auth = null;
+let db = null;
+let currentUser = null;
+
+const $ = id => document.getElementById(id);
+
+function applyTheme(theme){
+  const safeTheme = theme === "dark" ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", safeTheme);
+  localStorage.setItem("ai_exam_theme", safeTheme);
+  const btn = $("themeToggleBtn");
+  if(btn){
+    btn.textContent = safeTheme === "dark" ? "☀️ 日間模式" : "🌙 夜間模式";
+    btn.setAttribute("aria-label", safeTheme === "dark" ? "切換為日間模式" : "切換為夜間模式");
+  }
+}
+
+function initTheme(){
+  const saved = localStorage.getItem("ai_exam_theme");
+  const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  applyTheme(saved || (prefersDark ? "dark" : "light"));
+}
+
+function toggleTheme(){
+  const current = document.documentElement.getAttribute("data-theme") || "light";
+  applyTheme(current === "dark" ? "light" : "dark");
+}
+
+function isFirebaseConfigured(){
+  return firebaseConfig &&
+    firebaseConfig.apiKey && !String(firebaseConfig.apiKey).includes("請貼上") &&
+    firebaseConfig.authDomain && !String(firebaseConfig.authDomain).includes("請貼上") &&
+    firebaseConfig.projectId && !String(firebaseConfig.projectId).includes("請貼上");
+}
+
+function setAuthStatus(text, type="guest"){
+  const status = $("authStatus");
+  if(!status) return;
+  status.className = `authStatus ${type}`;
+  status.textContent = text;
+}
+
+function updateAuthButtons(){
+  const loggedIn = !!currentUser;
+  const configured = !!auth && !!db;
+  ["loginBtn", "registerBtn", "googleLoginBtn"].forEach(id => { if($(id)) $(id).disabled = loggedIn || !configured; });
+  if($("logoutBtn")) $("logoutBtn").disabled = !loggedIn || !configured;
+}
+
+function initFirebase(){
+  if(!isFirebaseConfigured()){
+    $("firebaseConfigNotice").classList.remove("hidden");
+    setAuthStatus("目前：訪客模式。Firebase 尚未設定，可以練習，但不會寫入雲端錯題紀錄。", "guest");
+    updateAuthButtons();
+    return;
+  }
+
+  try{
+    app = firebase.initializeApp(firebaseConfig);
+    auth = firebase.auth();
+    db = firebase.firestore();
+    auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+
+    auth.onAuthStateChanged(async user => {
+      currentUser = user || null;
+      updateAuthButtons();
+      if(user){
+        const profile = await ensureUserProfile(user);
+        const name = profile.displayName || user.displayName || profile.userName || user.email || "會員";
+        setAuthStatus(`目前：${name} 已登入。考完後錯題會寫入 Firestore。`, "loginOk");
+      }else{
+        setAuthStatus("目前：訪客模式。可以練習，但不會寫入雲端錯題紀錄。", "guest");
+      }
+    });
+  }catch(e){
+    console.error(e);
+    setAuthStatus("Firebase 初始化失敗：" + (e && e.message ? e.message : e), "error");
+  }
+}
+
+async function ensureUserProfile(user){
+  const ref = db.collection("users").doc(user.uid).collection("profile").doc("main");
+  const snap = await ref.get();
+  if(snap.exists) return snap.data() || {};
+
+  const userName = user.email ? String(user.email).split("@")[0] : user.uid;
+  const profile = {
+    uid: user.uid,
+    userName,
+    displayName: user.displayName || userName,
+    email: user.email || "",
+    providerId: user.providerData && user.providerData[0] ? user.providerData[0].providerId : "password",
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+  await ref.set(profile, {merge:true});
+  return profile;
+}
+
+function normalizeUserName(name){
+  return String(name || "").trim().toLowerCase();
+}
+
+function validateUserName(name){
+  return /^[a-zA-Z0-9._-]{3,30}$/.test(String(name || ""));
+}
+
+function virtualEmailFromUserName(userName){
+  return `${normalizeUserName(userName)}@${AUTH_EMAIL_DOMAIN}`;
+}
+
+function firebaseErrorMessage(err){
+  const code = err && err.code ? err.code : "";
+  const map = {
+    "auth/email-already-in-use":"這個帳號已經被註冊。",
+    "auth/invalid-email":"帳號格式不正確。",
+    "auth/weak-password":"密碼強度不足，請至少 6 碼。",
+    "auth/user-not-found":"找不到這個帳號。",
+    "auth/wrong-password":"密碼錯誤。",
+    "auth/invalid-credential":"帳號或密碼錯誤。",
+    "auth/popup-closed-by-user":"你已關閉 Google 登入視窗。",
+    "auth/operation-not-allowed":"Firebase Console 尚未啟用這個登入方式。"
+  };
+  return map[code] || (err && err.message ? err.message : String(err));
+}
+
+async function loginMember(){
+  if(!auth){ alert("Firebase 尚未設定，無法登入。"); return; }
+  const userName = normalizeUserName($("loginUserInput").value);
+  const password = String($("loginPassInput").value || "");
+  if(!validateUserName(userName)){
+    alert("帳號需為 3～30 碼，只能使用英文、數字、底線、連字號、小數點。");
+    return;
+  }
+  if(!password){ alert("請輸入密碼。"); return; }
+
+  try{
+    $("loginBtn").disabled = true;
+    setAuthStatus("登入驗證中...", "guest");
+    await auth.signInWithEmailAndPassword(virtualEmailFromUserName(userName), password);
+    $("loginPassInput").value = "";
+  }catch(e){
+    setAuthStatus("登入失敗：" + firebaseErrorMessage(e), "error");
+  }finally{
+    updateAuthButtons();
+  }
+}
+
+async function registerMember(){
+  if(!auth || !db){ alert("Firebase 尚未設定，無法建立帳號。"); return; }
+  const userName = normalizeUserName($("loginUserInput").value);
+  const password = String($("loginPassInput").value || "");
+  const displayName = String($("registerDisplayInput").value || userName).trim() || userName;
+
+  if(!validateUserName(userName)){
+    alert("帳號需為 3～30 碼，只能使用英文、數字、底線、連字號、小數點。\n請在『使用者帳號』欄位輸入。");
+    return;
+  }
+  if(password.length < 6){ alert("密碼至少 6 碼。請在『密碼』欄位輸入。"); return; }
+
+  try{
+    $("registerBtn").disabled = true;
+    setAuthStatus("建立帳號中...", "guest");
+    const cred = await auth.createUserWithEmailAndPassword(virtualEmailFromUserName(userName), password);
+    await cred.user.updateProfile({displayName});
+    await db.collection("users").doc(cred.user.uid).collection("profile").doc("main").set({
+      uid: cred.user.uid,
+      userName,
+      displayName,
+      email: cred.user.email || "",
+      providerId: "password",
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, {merge:true});
+    $("loginPassInput").value = "";
+    setAuthStatus(`目前：${displayName} 已登入。考完後錯題會寫入 Firestore。`, "loginOk");
+  }catch(e){
+    setAuthStatus("建立帳號失敗：" + firebaseErrorMessage(e), "error");
+  }finally{
+    updateAuthButtons();
+  }
+}
+
+async function loginWithGoogle(){
+  if(!auth || !db){ alert("Firebase 尚未設定，無法使用 Google 登入。"); return; }
+  try{
+    const provider = new firebase.auth.GoogleAuthProvider();
+    await auth.signInWithPopup(provider);
+  }catch(e){
+    setAuthStatus("Google 登入失敗：" + firebaseErrorMessage(e), "error");
+  }
+}
+
+async function logoutMember(){
+  if(!auth) return;
+  await auth.signOut();
+}
+
+function normalizeHeader(h){
+  return String(h || "").trim().toLowerCase()
+    .replace(/\s/g,"")
+    .replace("：","")
+    .replace(":","")
+    .replace("選項","")
+    .replace("option","");
+}
+
+function pick(obj, names){
+  for(const n of names){
+    const key = Object.keys(obj).find(k => normalizeHeader(k) === normalizeHeader(n));
+    if(key && obj[key] !== undefined && String(obj[key]).trim() !== "") return String(obj[key]).trim();
+  }
+  return "";
+}
+
+function gvizToRows(json){
+  const cols = json.table.cols.map(c => c.label || c.id || "");
+  const rows = json.table.rows.map(r => {
+    return r.c.map(cell => {
+      if(!cell) return "";
+      return cell.f !== undefined ? cell.f : (cell.v !== undefined ? cell.v : "");
+    });
+  });
+  return [cols, ...rows];
+}
+
+function rowsToQuestions(rows){
+  if(!rows || rows.length < 2) return [];
+  const header = rows[0].map(x => String(x || "").trim());
+  const dataRows = rows.slice(1).filter(r => r.some(x => String(x||"").trim()));
+
+  return dataRows.map((r, rowIndex) => {
+    const obj = {};
+    header.forEach((h,i)=>obj[h]=r[i] || "");
+
+    const no = pick(obj, ["題號","編號","no","id"]);
+    const scope = pick(obj, ["範圍","章節","科目","分類","range","scope"]);
+    const type = pick(obj, ["題目類型","類型","題型","type"]);
+    const q = pick(obj, ["題目","問題","question","試題"]);
+
+    const opts = [
+      pick(obj, ["選項1","選項一","1","A","甲","選項A","optionA"]),
+      pick(obj, ["選項2","選項二","2","B","乙","選項B","optionB"]),
+      pick(obj, ["選項3","選項三","3","C","丙","選項C","optionC"]),
+      pick(obj, ["選項4","選項四","4","D","丁","選項D","optionD"])
+    ].filter(Boolean);
+
+    const ans = pick(obj, ["正確答案","答案","正解","answer","correct"]);
+    const exp = pick(obj, ["解析","說明","explanation"]);
+
+    return {no, scope, type, q, opts, ans, exp, rowIndex: rowIndex + 2};
+  }).filter(x => x.q && x.opts.length >= 2 && x.ans);
+}
+
+function shuffle(arr){
+  return [...arr].sort(()=>Math.random()-0.5);
+}
+
+function scopeName(item){
+  const name = String(item.scope || "未分類").trim();
+  return name || "未分類";
+}
+
+function buildScopeMeta(){
+  const counts = {};
+  bank.forEach(item => {
+    const name = scopeName(item);
+    counts[name] = (counts[name] || 0) + 1;
+  });
+  return Object.entries(counts)
+    .map(([name, count]) => ({name, count}))
+    .sort((a, b) => a.name.localeCompare(b.name, "zh-Hant"));
+}
+
+function getSelectedQuestions(){
+  if(!bank.length || !selectedScopes.size) return [];
+  return bank.filter(item => selectedScopes.has(scopeName(item)));
+}
+
+function updateScopeSummary(){
+  const summary = $("scopeSummary");
+  if(!summary) return;
+  const selectedQuestionCount = getSelectedQuestions().length;
+  const selectedScopeCount = selectedScopes.size;
+  const totalScopeCount = scopeMeta.length;
+
+  if(!selectedScopeCount){
+    summary.textContent = `尚未選擇範圍，請至少勾選一個範圍。`;
+  }else{
+    summary.textContent = `已選 ${selectedScopeCount} / ${totalScopeCount} 個範圍，共 ${selectedQuestionCount} 題。預設全選，可取消不想練的範圍。`;
+  }
+}
+
+function syncCountInputByScope(){
+  const pool = getSelectedQuestions();
+  const countInput = $("countInput");
+  const startBtn = $("startBtn");
+  const maxCount = pool.length;
+
+  if(!countInput || !startBtn) return;
+
+  if(maxCount <= 0){
+    countInput.max = 0;
+    countInput.value = 0;
+    startBtn.disabled = true;
+    updateScopeSummary();
+    return;
+  }
+
+  const current = Number(countInput.value || 20);
+  countInput.max = maxCount;
+  countInput.value = Math.min(Math.max(current, 1), maxCount);
+  startBtn.disabled = false;
+  updateScopeSummary();
+}
+
+function updateScopeSelection(){
+  selectedScopes = new Set([...document.querySelectorAll(".scopeCheckbox:checked")].map(cb => cb.value));
+  syncCountInputByScope();
+}
+
+function setAllScopes(checked){
+  document.querySelectorAll(".scopeCheckbox").forEach(cb => cb.checked = checked);
+  updateScopeSelection();
+}
+
+function renderScopeFilter(){
+  const box = $("scopeFilterBox");
+  const list = $("scopeList");
+  if(!box || !list) return;
+
+  scopeMeta = buildScopeMeta();
+  selectedScopes = new Set(scopeMeta.map(s => s.name));
+
+  if(!scopeMeta.length){
+    box.classList.add("hidden");
+    list.innerHTML = "";
+    syncCountInputByScope();
+    return;
+  }
+
+  list.innerHTML = scopeMeta.map(s => `
+    <label class="scopeItem" title="${escapeHtml(s.name)}">
+      <input type="checkbox" class="scopeCheckbox" value="${escapeHtml(s.name)}" checked>
+      <span>${escapeHtml(s.name)}</span>
+      <span class="scopeCount">${s.count} 題</span>
+    </label>
+  `).join("");
+
+  box.classList.remove("hidden");
+  document.querySelectorAll(".scopeCheckbox").forEach(cb => cb.onchange = updateScopeSelection);
+  syncCountInputByScope();
+}
+
+function answerIndex(item){
+  const raw = String(item.ans || "").trim();
+  const a = raw.toUpperCase();
+  const letters = ["A","B","C","D"];
+
+  if(letters.includes(a)) return letters.indexOf(a);
+
+  const numMatch = raw.match(/[1-4]/);
+  if(numMatch && raw.length <= 8) return Number(numMatch[0]) - 1;
+
+  const letterMatch = a.match(/[ABCD]/);
+  if(letterMatch && a.length <= 8) return letters.indexOf(letterMatch[0]);
+
+  const idx = item.opts.findIndex(o => String(o).trim() === raw);
+  return idx >= 0 ? idx : -1;
+}
+
+function loadGoogleSheetByJSONP(){
+  return new Promise((resolve, reject) => {
+    const callbackName = "googleSheetCallback_" + Date.now();
+    const script = document.createElement("script");
+
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("讀取逾時。請確認 Google Sheet 權限為『知道連結的任何人可以檢視』。"));
+    }, 15000);
+
+    function cleanup(){
+      clearTimeout(timer);
+      delete window[callbackName];
+      if(script.parentNode) script.parentNode.removeChild(script);
+    }
+
+    window[callbackName] = function(json){
+      cleanup();
+      resolve(json);
+    };
+
+    script.onerror = function(){
+      cleanup();
+      reject(new Error("Google Sheet 載入失敗。請確認試算表權限或工作表 gid。"));
+    };
+
+    script.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?gid=${GID}&tqx=responseHandler:${callbackName}&t=${Date.now()}`;
+    document.body.appendChild(script);
+  });
+}
+
+async function loadBank(){
+  $("loadMsg").textContent = "正在讀取題庫...";
+  try{
+    const json = await loadGoogleSheetByJSONP();
+    const rows = gvizToRows(json);
+    bank = rowsToQuestions(rows);
+
+    if(!bank.length){
+      console.log(rows.slice(0,5));
+      throw new Error("讀不到題目，請確認第一列欄位包含：題號、範圍、題目類型、題目、選項1、選項2、選項3、選項4、正確答案、解析。");
+    }
+
+    renderScopeFilter();
+    $("loadMsg").textContent = `題庫讀取成功：共 ${bank.length} 題，已預設全選 ${scopeMeta.length} 個範圍。`;
+  }catch(e){
+    $("loadMsg").innerHTML =
+      `讀取失敗：${escapeHtml(e.message)}<br>` +
+      `請確認 Google Sheet 權限為「知道連結的任何人可以檢視」，欄位名稱為：題號、範圍、題目類型、題目、選項1、選項2、選項3、選項4、正確答案、解析。`;
+  }
+}
+
+function startQuiz(sourceQuestions = null){
+  if(!bank.length){ alert("題庫尚未讀取成功"); return; }
+
+  if(Array.isArray(sourceQuestions) && sourceQuestions.length){
+    quiz = shuffle(sourceQuestions);
+    mode = "instant";
+  }else{
+    mode = $("modeInput").value;
+    const pool = getSelectedQuestions();
+    if(!pool.length){
+      alert("請至少勾選一個要練習的範圍");
+      return;
+    }
+    const count = Math.min(Number($("countInput").value || 20), pool.length);
+    quiz = shuffle(pool).slice(0,count);
+  }
+
+  index = 0; selected = null; answers = []; correctCount = 0;
+  $("setup").classList.add("hidden");
+  $("finish").classList.add("hidden");
+  $("review").classList.add("hidden");
+  $("quiz").classList.remove("hidden");
+  renderQuestion();
+}
+
+function renderQuestion(){
+  selected = null;
+  const item = quiz[index];
+  $("progressText").textContent = `第 ${index+1} / ${quiz.length} 題`;
+  $("scoreText").textContent = `目前答對：${correctCount}`;
+  $("progressBar").style.width = `${((index)/quiz.length)*100}%`;
+  const meta = [
+    item.no ? `題號：${item.no}` : "",
+    item.scope ? `範圍：${item.scope}` : "",
+    item.type ? `題型：${item.type}` : ""
+  ].filter(Boolean).join("　");
+  $("questionText").textContent = (meta ? meta + "\n\n" : "") + item.q;
+  $("feedback").innerHTML = "";
+  $("submitBtn").disabled = false;
+  $("nextBtn").disabled = true;
+
+  const letters = ["A","B","C","D"];
+  $("options").innerHTML = "";
+  item.opts.forEach((opt,i)=>{
+    const btn = document.createElement("button");
+    btn.className = "option";
+    btn.textContent = `${letters[i]}. ${opt}`;
+    btn.onclick = () => {
+      selected = i;
+      [...document.querySelectorAll(".option")].forEach(x=>x.classList.remove("selected"));
+      btn.classList.add("selected");
+    };
+    $("options").appendChild(btn);
+  });
+}
+
+function submitAnswer(){
+  if(selected === null){ alert("請先選一個答案"); return; }
+  const item = quiz[index];
+  const correct = answerIndex(item);
+  const isCorrect = selected === correct;
+  answers.push({item, selected, correct, isCorrect});
+  if(isCorrect) correctCount++;
+
+  $("scoreText").textContent = `目前答對：${correctCount}`;
+  $("submitBtn").disabled = true;
+  $("nextBtn").disabled = false;
+
+  if(mode === "instant"){
+    [...document.querySelectorAll(".option")].forEach((btn,i)=>{
+      if(i === correct) btn.classList.add("correct");
+      if(i === selected && !isCorrect) btn.classList.add("wrong");
+    });
+    const letters = ["A","B","C","D"];
+    $("feedback").innerHTML =
+      `<div class="result ${isCorrect ? "ok" : "bad"}">${isCorrect ? "答對了！" : "答錯了！"} 正解：${correct >= 0 ? letters[correct] : escapeHtml(item.ans)}</div>` +
+      (item.exp ? `<p><b>解析：</b>${escapeHtml(item.exp)}</p>` : "");
+  }
+}
+
+function nextQuestion(){
+  index++;
+  if(index >= quiz.length) finishQuiz();
+  else renderQuestion();
+}
+
+function finishQuiz(){
+  $("quiz").classList.add("hidden");
+  $("finish").classList.remove("hidden");
+  $("progressBar").style.width = `100%`;
+
+  const total = quiz.length || 1;
+  const wrongCount = total - correctCount;
+  const rawScore = (correctCount / total) * TOTAL_SCORE;
+  const score = Math.round(rawScore * 10) / 10;
+  const rate = Math.round((correctCount / total) * 100);
+  const pointPerQuestion = Math.round((TOTAL_SCORE / total) * 10) / 10;
+  const passed = score >= PASS_SCORE;
+
+  $("finalScore").textContent = score;
+  $("finalTotal").textContent = TOTAL_SCORE;
+  $("finalCorrect").textContent = correctCount;
+  $("finalWrong").textContent = wrongCount;
+  $("finalRate").textContent = `${rate}%`;
+  $("finalPoint").textContent = pointPerQuestion;
+
+  $("finalStatus").className = `summaryBox ${passed ? "passBox" : "failBox"}`;
+  $("finalStatus").innerHTML = passed
+    ? `<b>結果：通過門檻</b>，本次 ${score} / ${TOTAL_SCORE} 分。`
+    : `<b>結果：未達門檻</b>，本次 ${score} / ${TOTAL_SCORE} 分，建議先複習錯題再重考。`;
+
+  $("finalSummary").innerHTML =
+    `本次共 ${total} 題，每題約 ${pointPerQuestion} 分；答對 ${correctCount} 題、答錯 ${wrongCount} 題。` +
+    `設定通過門檻為 ${PASS_SCORE} 分，可在程式中的 <b>PASS_SCORE</b> 自行調整。`;
+
+  renderWeakPoint();
+  $("practiceWrongBtn").disabled = wrongCount === 0;
+  reviewWrong();
+  saveWrongStatsIfLoggedIn();
+}
+
+function renderWeakPoint(){
+  const wrong = answers.filter(a => !a.isCorrect);
+  if(!wrong.length){
+    $("weakPoint").innerHTML = "<b>弱點分析：</b>這次沒有錯題，狀態很好。可以加大題數或切換考試模式挑戰。";
+    return;
+  }
+
+  const countMap = {};
+  wrong.forEach(a => {
+    const key = a.item.scope || a.item.type || "未分類";
+    countMap[key] = (countMap[key] || 0) + 1;
+  });
+
+  const ranking = Object.entries(countMap)
+    .sort((a,b)=>b[1]-a[1])
+    .map(([name,count])=>`${escapeHtml(name)}：${count} 題`)
+    .join("、");
+
+  $("weakPoint").innerHTML = `<b>弱點分析：</b>${ranking}<br><span class="muted small">建議先看下方錯題解析，再按「只練本次錯題」或「錯題內容複習」重跑一輪。</span>`;
+}
+
+function optionListHtml(a){
+  const letters = ["A","B","C","D"];
+  return `<ul class="optionList">${a.item.opts.map((opt,i)=>{
+    const cls = i === a.correct ? "correctOpt" : (i === a.selected ? "wrongOpt" : "");
+    return `<li class="${cls}">${letters[i] || "-"}. ${escapeHtml(opt)}</li>`;
+  }).join("")}</ul>`;
+}
+
+function reviewWrong(){
+  const wrong = answers.filter(a => !a.isCorrect);
+  $("review").classList.remove("hidden");
+  if(!wrong.length){
+    $("reviewTable").innerHTML = "<p class='muted'>恭喜，沒有錯題。</p>";
+    return;
+  }
+
+  const letters = ["A","B","C","D"];
+  $("reviewTable").innerHTML = wrong.map((a,i)=>{
+    const meta = [
+      a.item.no ? "題號：" + a.item.no : "",
+      a.item.scope ? "範圍：" + a.item.scope : "",
+      a.item.type ? "題型：" + a.item.type : ""
+    ].filter(Boolean).join("　");
+
+    const yourAnswer = `${letters[a.selected] || "-"}．${escapeHtml(a.item.opts[a.selected] || "")}`;
+    const correctAnswer = a.correct >= 0
+      ? `${letters[a.correct] || "-"}．${escapeHtml(a.item.opts[a.correct] || "")}`
+      : escapeHtml(a.item.ans || "正確答案格式無法判讀");
+
+    return `<div class="wrongCard">
+      <h3>錯題 ${i+1}：${escapeHtml(a.item.q)}</h3>
+      ${meta ? `<div class="muted small">${escapeHtml(meta)}</div>` : ""}
+      ${optionListHtml(a)}
+      <div class="answerLine bad"><b>你的答案：</b>${yourAnswer}</div>
+      <div class="answerLine ok"><b>正確答案：</b>${correctAnswer}</div>
+      <div class="answerLine"><b>解析：</b>${escapeHtml(a.item.exp || "這題目前沒有解析，建議回題庫補上解析欄位。")}</div>
+    </div>`;
+  }).join("");
+}
+
+function practiceWrong(){
+  const wrongItems = answers.filter(a => !a.isCorrect).map(a => a.item);
+  if(!wrongItems.length){
+    alert("這次沒有錯題可以練習");
+    return;
+  }
+  startQuiz(wrongItems);
+}
+
+function questionNo(item){
+  return String((item && item.no) || "").trim();
+}
+
+function fallbackQuestionKey(item){
+  const raw = `${item.scope || ""}|${item.q || ""}`;
+  let hash = 0;
+  for(let i=0;i<raw.length;i++){
+    hash = ((hash << 5) - hash) + raw.charCodeAt(i);
+    hash |= 0;
+  }
+  return "QHASH_" + Math.abs(hash).toString(36);
+}
+
+function getQuestionKey(item){
+  return questionNo(item) || fallbackQuestionKey(item);
+}
+
+function safeDocId(key){
+  return "q_" + encodeURIComponent(String(key || "")).replace(/%/g, "_");
+}
+
+function selectedAnswerText(answerObj){
+  const letters = ["A","B","C","D"];
+  const idx = answerObj.selected;
+  return `${letters[idx] || "-"}．${answerObj.item.opts[idx] || ""}`;
+}
+
+function correctAnswerText(answerObj){
+  const letters = ["A","B","C","D"];
+  const idx = answerObj.correct;
+  if(idx >= 0) return `${letters[idx] || "-"}．${answerObj.item.opts[idx] || ""}`;
+  return String(answerObj.item.ans || "");
+}
+
+function buildWrongStatsPayload(){
+  return answers.filter(a => !a.isCorrect).map(a => ({
+    questionNo: getQuestionKey(a.item),
+    scope: a.item.scope || "未分類",
+    type: a.item.type || "",
+    lastSelected: selectedAnswerText(a),
+    correctAnswer: correctAnswerText(a)
+  })).filter(x => x.questionNo);
+}
+
+async function saveWrongStatsIfLoggedIn(){
+  const payload = buildWrongStatsPayload();
+  if(!payload.length) return;
+
+  const box = $("weakPoint");
+  if(!currentUser || !db){
+    if(box) box.innerHTML += `<br><span class="muted small">目前是訪客模式，本次錯題只顯示在畫面中，不會寫入雲端紀錄。</span>`;
+    return;
+  }
+
+  try{
+    let saved = 0;
+    for(const item of payload){
+      const ref = db.collection("users").doc(currentUser.uid).collection("wrongStats").doc(safeDocId(item.questionNo));
+      await db.runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        const now = firebase.firestore.FieldValue.serverTimestamp();
+        if(snap.exists){
+          tx.set(ref, {
+            questionNo: item.questionNo,
+            scope: item.scope,
+            type: item.type,
+            lastSelected: item.lastSelected,
+            correctAnswer: item.correctAnswer,
+            wrongCount: firebase.firestore.FieldValue.increment(1),
+            mastered: false,
+            lastWrongAt: now,
+            updatedAt: now
+          }, {merge:true});
+        }else{
+          tx.set(ref, {
+            questionNo: item.questionNo,
+            scope: item.scope,
+            type: item.type,
+            lastSelected: item.lastSelected,
+            correctAnswer: item.correctAnswer,
+            wrongCount: 1,
+            mastered: false,
+            firstWrongAt: now,
+            lastWrongAt: now,
+            updatedAt: now
+          });
+        }
+      });
+      saved++;
+    }
+    if(box) box.innerHTML += `<br><span class="muted small">已同步 ${saved} 筆錯題統計到 Firestore。</span>`;
+  }catch(e){
+    console.error(e);
+    if(box) box.innerHTML += `<br><span class="muted small">錯題同步失敗：${escapeHtml(firebaseErrorMessage(e))}</span>`;
+  }
+}
+
+async function practiceHistoryWrong(){
+  if(!currentUser || !db){
+    alert("請先登入會員，才可以讀取你的歷史錯題。訪客模式不會紀錄歷史錯題。");
+    return;
+  }
+  if(!bank.length){
+    alert("題庫尚未讀取成功，請先重新讀取題庫。");
+    return;
+  }
+
+  try{
+    const snap = await db.collection("users").doc(currentUser.uid).collection("wrongStats").get();
+    const stats = [];
+    snap.forEach(doc => {
+      const data = doc.data() || {};
+      if(data.mastered !== true) stats.push(data);
+    });
+
+    if(!stats.length){
+      alert("目前沒有歷史錯題紀錄。先登入後完成一回測驗，答錯的題目才會累積在這裡。或你的錯題都已標記掌握。");
+      return;
+    }
+
+    stats.sort((a,b) => Number(b.wrongCount || 0) - Number(a.wrongCount || 0));
+    const itemMap = new Map(bank.map(item => [getQuestionKey(item), item]));
+    const wrongItems = [];
+    const missing = [];
+    stats.forEach(s => {
+      const key = String(s.questionNo || "").trim();
+      const item = itemMap.get(key);
+      if(item) wrongItems.push(item);
+      else missing.push(key);
+    });
+
+    if(!wrongItems.length){
+      alert("有歷史錯題紀錄，但目前題庫找不到對應題號。請確認題庫的題號沒有改過。\n找不到的題號：" + missing.slice(0,10).join("、"));
+      return;
+    }
+
+    if(missing.length){
+      alert(`有 ${missing.length} 題歷史錯題在目前題庫找不到，會先練找得到的 ${wrongItems.length} 題。`);
+    }
+    startQuiz(wrongItems);
+  }catch(e){
+    alert("讀取歷史錯題失敗：" + firebaseErrorMessage(e));
+  }
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+$("startBtn").onclick = startQuiz;
+$("reloadBtn").onclick = loadBank;
+$("submitBtn").onclick = submitAnswer;
+$("nextBtn").onclick = nextQuestion;
+$("againBtn").onclick = () => { $("finish").classList.add("hidden"); $("review").classList.add("hidden"); $("setup").classList.remove("hidden"); };
+$("reviewBtn").onclick = reviewWrong;
+$("practiceWrongBtn").onclick = practiceWrong;
+$("historyWrongBtn").onclick = practiceHistoryWrong;
+$("historyWrongBtnFinish").onclick = practiceHistoryWrong;
+$("loginBtn").onclick = loginMember;
+$("registerBtn").onclick = registerMember;
+$("googleLoginBtn").onclick = loginWithGoogle;
+$("logoutBtn").onclick = logoutMember;
+$("loginPassInput").addEventListener("keydown", e => { if(e.key === "Enter") loginMember(); });
+$("themeToggleBtn").onclick = toggleTheme;
+$("selectAllScopesBtn").onclick = () => setAllScopes(true);
+$("clearScopesBtn").onclick = () => setAllScopes(false);
+$("countInput").oninput = syncCountInputByScope;
+
+initTheme();
+initFirebase();
+loadBank();
+</script>
+</body>
+</html>
