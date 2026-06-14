@@ -80,6 +80,20 @@
     .configBox{background:#fff7ed;border-color:#fed7aa;color:#9a3412}
     code{background:#f3f4f6;border:1px solid var(--line);border-radius:6px;padding:1px 5px}
 
+    .leaderboardControls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
+    .leaderboardNote{margin-top:8px}
+    .leaderboardTableWrap{overflow-x:auto;margin-top:12px}
+    .leaderboardTable{width:100%;border-collapse:collapse;font-size:14px;min-width:720px}
+    .leaderboardTable th,
+    .leaderboardTable td{border-bottom:1px solid var(--line);padding:10px;text-align:left;vertical-align:middle}
+    .leaderboardTable th{background:#f9fafb;color:var(--muted);font-size:13px}
+    .rankBadge{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;border-radius:999px;background:#eef2ff;color:#1e40af;font-weight:900}
+    .rankBadge.top1{background:#fef3c7;color:#92400e}
+    .rankBadge.top2{background:#f3f4f6;color:#374151}
+    .rankBadge.top3{background:#ffedd5;color:#9a3412}
+    .leaderName{font-weight:900}
+    .leaderMeta{font-size:12px;color:var(--muted);margin-top:2px}
+
     html[data-theme="dark"]{
       --bg:#0f172a; --card:#111827; --text:#e5e7eb; --muted:#9ca3af;
       --main:#60a5fa; --ok:#4ade80; --bad:#f87171; --line:#334155; --warn:#fbbf24;
@@ -117,6 +131,14 @@
     html[data-theme="dark"] .authStatus.error{background:#450a0a;border-color:#ef4444;color:#fecaca}
     html[data-theme="dark"] .configBox{background:#451a03;border-color:#92400e;color:#fed7aa}
     html[data-theme="dark"] code{background:#0b1220;border-color:var(--line)}
+
+    html[data-theme="dark"] .leaderboardTable th{background:#0b1220;color:var(--muted)}
+    html[data-theme="dark"] .leaderboardTable th,
+    html[data-theme="dark"] .leaderboardTable td{border-bottom-color:var(--line)}
+    html[data-theme="dark"] .rankBadge{background:#1e3a8a;color:#dbeafe}
+    html[data-theme="dark"] .rankBadge.top1{background:#78350f;color:#fde68a}
+    html[data-theme="dark"] .rankBadge.top2{background:#374151;color:#e5e7eb}
+    html[data-theme="dark"] .rankBadge.top3{background:#7c2d12;color:#fed7aa}
 
     @media(max-width:650px){
       .wrap{padding:12px}
@@ -175,10 +197,24 @@
       <button class="ghost" id="googleLoginBtn" type="button">Google 登入</button>
       <button class="secondary" id="logoutBtn" type="button" disabled>登出</button>
       <button class="ghost" id="historyWrongBtn" type="button">錯題內容複習</button>
+      <button class="ghost" id="leaderboardBtn" type="button">查看排行榜</button>
     </div>
     <div class="authHint muted small" style="margin-top:10px">
-      未登入就是訪客模式，可以練習但不會記錄雲端錯題。登入後 Firestore 只存：使用者 UID、題號、範圍、錯誤次數、最後選項、正確答案、最後錯誤時間；不重複存題目全文。
+      未登入就是訪客模式，可以練習但不會記錄雲端錯題。登入後 Firestore 只存錯題統計與成績統計；排行榜以「刷題次數最多」排序，並顯示最高分、平均分與最後分數。
     </div>
+  </div>
+
+
+  <div id="leaderboardBox" class="card hidden">
+    <h2>刷題次數排行榜</h2>
+    <p class="muted small leaderboardNote">
+      排行榜來源：Firebase Firestore 的 <code>leaderboard</code> 集合。主排序為「刷題次數最多」，同時顯示最高分、平均分與最後一次分數。
+    </p>
+    <div class="leaderboardControls">
+      <button class="ghost" id="reloadLeaderboardBtn" type="button">重新整理排行榜</button>
+      <button class="secondary" id="hideLeaderboardBtn" type="button">收合排行榜</button>
+    </div>
+    <div id="leaderboardTable" class="leaderboardTableWrap muted small">尚未載入排行榜。</div>
   </div>
 
   <div id="setup" class="card">
@@ -247,6 +283,7 @@
       <button class="ghost" id="reviewBtn">查看本次錯題解析</button>
       <button class="secondary" id="practiceWrongBtn">只練本次錯題</button>
       <button class="ghost" id="historyWrongBtnFinish" type="button">錯題內容複習</button>
+      <button class="ghost" id="leaderboardBtnFinish" type="button">查看排行榜</button>
     </div>
   </div>
 
@@ -295,6 +332,7 @@ let app = null;
 let auth = null;
 let db = null;
 let currentUser = null;
+let currentProfile = null;
 
 const $ = id => document.getElementById(id);
 
@@ -357,6 +395,7 @@ function initFirebase(){
 
     auth.onAuthStateChanged(async user => {
       currentUser = user || null;
+      if(!user) currentProfile = null;
       updateAuthButtons();
       if(user){
         // 先把登入狀態顯示出來，避免 Firestore profile 建立失敗時，畫面仍停在訪客模式。
@@ -365,6 +404,7 @@ function initFirebase(){
 
         try{
           const profile = await ensureUserProfile(user);
+          currentProfile = profile || {};
           const name = profile.displayName || user.displayName || profile.userName || user.email || "會員";
           setAuthStatus(`目前：${name} 已登入。考完後錯題會寫入 Firestore。`, "loginOk");
         }catch(e){
@@ -527,7 +567,7 @@ async function registerMember(){
   // 第三步：寫入 Firestore profile。失敗不代表帳號建立失敗，只代表會員資料或錯題雲端紀錄暫時有問題。
   try{
     const ref = db.collection("users").doc(user.uid).collection("profile").doc("main");
-    await ref.set({
+    const profilePayload = {
       uid: user.uid,
       userName,
       displayName,
@@ -535,7 +575,9 @@ async function registerMember(){
       providerId: "password",
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, {merge:true});
+    };
+    await ref.set(profilePayload, {merge:true});
+    currentProfile = {...profilePayload};
 
     $("loginPassInput").value = "";
     setAuthStatus(`目前：${displayName} 已登入。會員資料已寫入，考完後錯題會寫入 Firestore。`, "loginOk");
@@ -920,6 +962,7 @@ function finishQuiz(){
   $("practiceWrongBtn").disabled = wrongCount === 0;
   reviewWrong();
   saveWrongStatsIfLoggedIn();
+  saveExamResultIfLoggedIn({score, total, correctCount, wrongCount, rate, mode});
 }
 
 function renderWeakPoint(){
@@ -1037,6 +1080,154 @@ function buildWrongStatsPayload(){
   })).filter(x => x.questionNo);
 }
 
+
+function getDisplayNameForLeaderboard(){
+  if(currentProfile && currentProfile.displayName) return String(currentProfile.displayName);
+  if(currentUser && currentUser.displayName) return String(currentUser.displayName);
+  if(currentProfile && currentProfile.userName) return String(currentProfile.userName);
+  if(currentUser && currentUser.email) return String(currentUser.email).split("@")[0];
+  return "匿名會員";
+}
+
+async function saveExamResultIfLoggedIn(result){
+  if(!currentUser || !db) return;
+
+  const box = $("weakPoint");
+  const displayName = getDisplayNameForLeaderboard();
+  const now = firebase.firestore.FieldValue.serverTimestamp();
+  const numericScore = Number(result.score || 0);
+  const numericTotal = Number(result.total || 0);
+  const numericCorrect = Number(result.correctCount || 0);
+  const numericWrong = Number(result.wrongCount || 0);
+  const numericRate = Number(result.rate || 0);
+
+  const publicRef = db.collection("leaderboard").doc(currentUser.uid);
+  const privateRef = db.collection("users").doc(currentUser.uid).collection("examStats").doc("main");
+
+  try{
+    await db.runTransaction(async tx => {
+      const publicSnap = await tx.get(publicRef);
+      const old = publicSnap.exists ? (publicSnap.data() || {}) : {};
+      const oldAttempts = Number(old.attemptCount || 0);
+      const oldTotalScore = Number(old.totalScore || 0);
+      const newAttempts = oldAttempts + 1;
+      const newTotalScore = oldTotalScore + numericScore;
+      const bestScore = Math.max(Number(old.bestScore || 0), numericScore);
+      const avgScore = Math.round((newTotalScore / newAttempts) * 10) / 10;
+
+      const payload = {
+        uid: currentUser.uid,
+        displayName,
+        providerId: currentUser.providerData && currentUser.providerData[0] ? currentUser.providerData[0].providerId : "",
+        attemptCount: newAttempts,
+        totalScore: newTotalScore,
+        avgScore,
+        bestScore,
+        lastScore: numericScore,
+        lastTotal: numericTotal,
+        lastCorrect: numericCorrect,
+        lastWrong: numericWrong,
+        lastRate: numericRate,
+        lastMode: result.mode || "",
+        lastExamAt: now,
+        updatedAt: now
+      };
+
+      if(!publicSnap.exists){
+        payload.createdAt = now;
+      }
+
+      tx.set(publicRef, payload, {merge:true});
+      tx.set(privateRef, payload, {merge:true});
+    });
+
+    if(box) box.innerHTML += `<br><span class="muted small">已同步本次成績到排行榜統計。</span>`;
+  }catch(e){
+    console.error(e);
+    if(box) box.innerHTML += `<br><span class="muted small">成績排行榜同步失敗：${escapeHtml(firebaseErrorMessage(e))}</span>`;
+  }
+}
+
+function showLeaderboardBox(){
+  const box = $("leaderboardBox");
+  if(box) box.classList.remove("hidden");
+}
+
+async function loadLeaderboard(){
+  if(!db){
+    alert("Firebase 尚未設定，無法讀取排行榜。");
+    return;
+  }
+
+  showLeaderboardBox();
+  const table = $("leaderboardTable");
+  if(table) table.innerHTML = "排行榜讀取中...";
+
+  try{
+    const snap = await db.collection("leaderboard")
+      .orderBy("attemptCount", "desc")
+      .limit(30)
+      .get();
+
+    const rows = [];
+    snap.forEach(doc => rows.push(doc.data() || {}));
+
+    rows.sort((a,b) => {
+      const attemptDiff = Number(b.attemptCount || 0) - Number(a.attemptCount || 0);
+      if(attemptDiff !== 0) return attemptDiff;
+      const bestDiff = Number(b.bestScore || 0) - Number(a.bestScore || 0);
+      if(bestDiff !== 0) return bestDiff;
+      return Number(b.avgScore || 0) - Number(a.avgScore || 0);
+    });
+
+    if(!rows.length){
+      if(table) table.innerHTML = "<p class='muted'>目前還沒有排行榜資料。會員登入後完成測驗，就會開始累積。</p>";
+      return;
+    }
+
+    const html = `
+      <table class="leaderboardTable">
+        <thead>
+          <tr>
+            <th>排名</th>
+            <th>使用者</th>
+            <th>刷題次數</th>
+            <th>最高分</th>
+            <th>平均分</th>
+            <th>最後分數</th>
+            <th>最後正確率</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((r,i)=>{
+            const rankClass = i === 0 ? "top1" : (i === 1 ? "top2" : (i === 2 ? "top3" : ""));
+            const isMe = currentUser && r.uid === currentUser.uid;
+            const name = escapeHtml(r.displayName || "匿名會員");
+            return `<tr>
+              <td><span class="rankBadge ${rankClass}">${i+1}</span></td>
+              <td>
+                <div class="leaderName">${isMe ? "⭐ " : ""}${name}</div>
+                <div class="leaderMeta">${isMe ? "這是你目前的紀錄" : "會員紀錄"}</div>
+              </td>
+              <td><b>${Number(r.attemptCount || 0)}</b> 次</td>
+              <td>${Number(r.bestScore || 0)} 分</td>
+              <td>${Number(r.avgScore || 0)} 分</td>
+              <td>${Number(r.lastScore || 0)} / ${Number(r.lastTotal || TOTAL_SCORE)} 分</td>
+              <td>${Number(r.lastRate || 0)}%</td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+      <p class="muted small leaderboardNote">註：這是前端寫入的學習排行榜，適合練習交流；若要正式競賽防作弊，需改用 Cloud Functions 後端驗證成績。</p>
+    `;
+    if(table) table.innerHTML = html;
+  }catch(e){
+    console.error(e);
+    if(table) table.innerHTML = `<p class="bad">排行榜讀取失敗：${escapeHtml(firebaseErrorMessage(e))}</p>`;
+  }
+}
+
+
 async function saveWrongStatsIfLoggedIn(){
   const payload = buildWrongStatsPayload();
   if(!payload.length) return;
@@ -1151,6 +1342,10 @@ $("reviewBtn").onclick = reviewWrong;
 $("practiceWrongBtn").onclick = practiceWrong;
 $("historyWrongBtn").onclick = practiceHistoryWrong;
 $("historyWrongBtnFinish").onclick = practiceHistoryWrong;
+$("leaderboardBtn").onclick = loadLeaderboard;
+$("leaderboardBtnFinish").onclick = loadLeaderboard;
+$("reloadLeaderboardBtn").onclick = loadLeaderboard;
+$("hideLeaderboardBtn").onclick = () => $("leaderboardBox").classList.add("hidden");
 $("loginBtn").onclick = loginMember;
 $("registerBtn").onclick = registerMember;
 $("googleLoginBtn").onclick = loginWithGoogle;
