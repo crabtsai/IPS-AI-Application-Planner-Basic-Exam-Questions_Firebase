@@ -200,15 +200,15 @@
       <button class="ghost" id="leaderboardBtn" type="button">查看排行榜</button>
     </div>
     <div class="authHint muted small" style="margin-top:10px">
-      未登入就是訪客模式，可以練習但不會記錄雲端錯題。登入後 Firestore 只存錯題統計與成績統計；排行榜以「刷題次數最多」排序，並顯示最高分、平均分與最後分數。
+      未登入就是訪客模式，可以練習但不會記錄雲端錯題。登入後 Firestore 只存錯題統計與成績統計；排行榜以「使用者帳號 + 顯示名稱」分開統計，換名稱不會覆蓋舊名稱紀錄。
     </div>
   </div>
 
 
   <div id="leaderboardBox" class="card hidden">
-    <h2>刷題次數排行榜</h2>
+    <h2>綜合戰力排行榜</h2>
     <p class="muted small leaderboardNote">
-      排行榜來源：Firebase Firestore 的 <code>leaderboard</code> 集合。主排序為「刷題次數最多」，同時顯示最高分、平均分與最後一次分數。
+      排行榜來源：Firebase Firestore 的 <code>leaderboard</code> 集合。主排序為「刷題次數最多」；同一會員若更換顯示名稱，會以不同名稱各自累積。
     </p>
     <div class="leaderboardControls">
       <button class="ghost" id="reloadLeaderboardBtn" type="button">重新整理排行榜</button>
@@ -1082,6 +1082,11 @@ function buildWrongStatsPayload(){
 
 
 function getDisplayNameForLeaderboard(){
+  // 排行榜顯示名稱優先順序：
+  // 1. 目前登入時 profile 內的 displayName
+  // 2. Firebase Auth 的 displayName
+  // 3. profile 內的 userName
+  // 4. email 前綴
   if(currentProfile && currentProfile.displayName) return String(currentProfile.displayName);
   if(currentUser && currentUser.displayName) return String(currentUser.displayName);
   if(currentProfile && currentProfile.userName) return String(currentProfile.userName);
@@ -1089,11 +1094,67 @@ function getDisplayNameForLeaderboard(){
   return "匿名會員";
 }
 
+function normalizeLeaderboardName(name){
+  const cleaned = String(name || "匿名會員")
+    .trim()
+    .replace(/\s+/g, " ");
+  return cleaned || "匿名會員";
+}
+
+function leaderboardNameKey(name){
+  // 用名稱產生穩定 key；同一個 uid + 同一個名稱會累積到同一筆。
+  // 換不同名稱會變成另一筆，不會覆蓋原本名稱的排行榜資料。
+  return normalizeLeaderboardName(name).toLocaleLowerCase("zh-Hant");
+}
+
+function safeLeaderboardDocId(uid, nameKey){
+  const raw = `${uid || "unknown"}__${nameKey || "anonymous"}`;
+  return "lb_" + encodeURIComponent(raw).replace(/%/g, "_").slice(0, 1400);
+}
+
+
+function attemptScoreFromAttempts(attemptCount){
+  // 刷題投入分：使用 log 曲線，避免單純狂刷題就壓過真正的分數表現。
+  // 1 次有基本分，30 次左右接近滿分，之後邊際效益遞減。
+  const count = Math.max(0, Number(attemptCount || 0));
+  const capped = Math.min(count, 30);
+  if(capped <= 0) return 0;
+  return Math.round((Math.log1p(capped) / Math.log1p(30)) * 1000) / 10;
+}
+
+function calculateRankScore({avgScore=0, bestScore=0, attemptScore=0, lastRate=0} = {}){
+  // 綜合戰力分數，滿分約 100。
+  // 平均分 45%：代表穩定度
+  // 最高分 25%：代表上限
+  // 刷題投入 20%：代表練習量，但用 log 限制刷題灌水
+  // 最近表現 10%：代表近期狀態
+  const value =
+    Number(avgScore || 0) * 0.45 +
+    Number(bestScore || 0) * 0.25 +
+    Number(attemptScore || 0) * 0.20 +
+    Number(lastRate || 0) * 0.10;
+  return Math.round(value * 10) / 10;
+}
+
+function rankScoreFromRow(row){
+  const attemptCount = Number(row && row.attemptCount || 0);
+  const attemptScore = Number(row && row.attemptScore || attemptScoreFromAttempts(attemptCount));
+  return calculateRankScore({
+    avgScore: Number(row && row.avgScore || 0),
+    bestScore: Number(row && row.bestScore || 0),
+    attemptScore,
+    lastRate: Number(row && row.lastRate || 0)
+  });
+}
+
 async function saveExamResultIfLoggedIn(result){
   if(!currentUser || !db) return;
 
   const box = $("weakPoint");
-  const displayName = getDisplayNameForLeaderboard();
+  const displayName = normalizeLeaderboardName(getDisplayNameForLeaderboard());
+  const nameKey = leaderboardNameKey(displayName);
+  const leaderboardDocId = safeLeaderboardDocId(currentUser.uid, nameKey);
+
   const now = firebase.firestore.FieldValue.serverTimestamp();
   const numericScore = Number(result.score || 0);
   const numericTotal = Number(result.total || 0);
@@ -1101,8 +1162,12 @@ async function saveExamResultIfLoggedIn(result){
   const numericWrong = Number(result.wrongCount || 0);
   const numericRate = Number(result.rate || 0);
 
-  const publicRef = db.collection("leaderboard").doc(currentUser.uid);
-  const privateRef = db.collection("users").doc(currentUser.uid).collection("examStats").doc("main");
+  // 重要：排行榜不再只用 uid 當文件 ID。
+  // 舊版：leaderboard/{uid} → 同一個帳號換名稱會互相覆蓋。
+  // 新版：leaderboard/{uid + displayNameKey} → 同一帳號不同名稱各自統計。
+  const publicRef = db.collection("leaderboard").doc(leaderboardDocId);
+  const privateRef = db.collection("users").doc(currentUser.uid).collection("examStatsByName").doc(safeDocId(nameKey));
+  const latestPrivateRef = db.collection("users").doc(currentUser.uid).collection("examStats").doc("main");
 
   try{
     await db.runTransaction(async tx => {
@@ -1114,15 +1179,28 @@ async function saveExamResultIfLoggedIn(result){
       const newTotalScore = oldTotalScore + numericScore;
       const bestScore = Math.max(Number(old.bestScore || 0), numericScore);
       const avgScore = Math.round((newTotalScore / newAttempts) * 10) / 10;
+      const attemptScore = attemptScoreFromAttempts(newAttempts);
+      const rankScore = calculateRankScore({
+        avgScore,
+        bestScore,
+        attemptScore,
+        lastRate: numericRate
+      });
 
       const payload = {
         uid: currentUser.uid,
+        ownerUid: currentUser.uid,
+        leaderboardDocId,
         displayName,
+        displayNameKey: nameKey,
         providerId: currentUser.providerData && currentUser.providerData[0] ? currentUser.providerData[0].providerId : "",
         attemptCount: newAttempts,
         totalScore: newTotalScore,
         avgScore,
         bestScore,
+        attemptScore,
+        rankScore,
+        rankScoreVersion: "weighted_v1_avg45_best25_attempt20_recent10",
         lastScore: numericScore,
         lastTotal: numericTotal,
         lastCorrect: numericCorrect,
@@ -1139,9 +1217,24 @@ async function saveExamResultIfLoggedIn(result){
 
       tx.set(publicRef, payload, {merge:true});
       tx.set(privateRef, payload, {merge:true});
+      tx.set(latestPrivateRef, {
+        uid: currentUser.uid,
+        latestLeaderboardDocId: leaderboardDocId,
+        latestDisplayName: displayName,
+        latestScore: numericScore,
+        latestTotal: numericTotal,
+        latestCorrect: numericCorrect,
+        latestWrong: numericWrong,
+        latestRate: numericRate,
+        latestRankScore: rankScore,
+        latestAttemptScore: attemptScore,
+        latestMode: result.mode || "",
+        lastExamAt: now,
+        updatedAt: now
+      }, {merge:true});
     });
 
-    if(box) box.innerHTML += `<br><span class="muted small">已同步本次成績到排行榜統計。</span>`;
+    if(box) box.innerHTML += `<br><span class="muted small">已同步本次成績到排行榜統計：${escapeHtml(displayName)}。</span>`;
   }catch(e){
     console.error(e);
     if(box) box.innerHTML += `<br><span class="muted small">成績排行榜同步失敗：${escapeHtml(firebaseErrorMessage(e))}</span>`;
@@ -1165,19 +1258,26 @@ async function loadLeaderboard(){
 
   try{
     const snap = await db.collection("leaderboard")
-      .orderBy("attemptCount", "desc")
+      .orderBy("rankScore", "desc")
       .limit(30)
       .get();
 
     const rows = [];
     snap.forEach(doc => rows.push(doc.data() || {}));
 
+    rows.forEach(r => {
+      r._rankScore = rankScoreFromRow(r);
+      r._attemptScore = Number(r.attemptScore || attemptScoreFromAttempts(Number(r.attemptCount || 0)));
+    });
+
     rows.sort((a,b) => {
-      const attemptDiff = Number(b.attemptCount || 0) - Number(a.attemptCount || 0);
-      if(attemptDiff !== 0) return attemptDiff;
+      const rankDiff = Number(b._rankScore || 0) - Number(a._rankScore || 0);
+      if(rankDiff !== 0) return rankDiff;
+      const avgDiff = Number(b.avgScore || 0) - Number(a.avgScore || 0);
+      if(avgDiff !== 0) return avgDiff;
       const bestDiff = Number(b.bestScore || 0) - Number(a.bestScore || 0);
       if(bestDiff !== 0) return bestDiff;
-      return Number(b.avgScore || 0) - Number(a.avgScore || 0);
+      return Number(b.attemptCount || 0) - Number(a.attemptCount || 0);
     });
 
     if(!rows.length){
@@ -1191,11 +1291,12 @@ async function loadLeaderboard(){
           <tr>
             <th>排名</th>
             <th>使用者</th>
+            <th>綜合戰力</th>
             <th>刷題次數</th>
-            <th>最高分</th>
             <th>平均分</th>
-            <th>最後分數</th>
-            <th>最後正確率</th>
+            <th>最高分</th>
+            <th>刷題投入</th>
+            <th>最近表現</th>
           </tr>
         </thead>
         <tbody>
@@ -1207,18 +1308,19 @@ async function loadLeaderboard(){
               <td><span class="rankBadge ${rankClass}">${i+1}</span></td>
               <td>
                 <div class="leaderName">${isMe ? "⭐ " : ""}${name}</div>
-                <div class="leaderMeta">${isMe ? "這是你目前的紀錄" : "會員紀錄"}</div>
+                <div class="leaderMeta">${isMe ? "這是你目前名稱的紀錄" : "會員名稱紀錄"}</div>
               </td>
+              <td><b>${Number(r._rankScore || r.rankScore || 0)}</b> 分</td>
               <td><b>${Number(r.attemptCount || 0)}</b> 次</td>
-              <td>${Number(r.bestScore || 0)} 分</td>
               <td>${Number(r.avgScore || 0)} 分</td>
-              <td>${Number(r.lastScore || 0)} / ${Number(r.lastTotal || TOTAL_SCORE)} 分</td>
-              <td>${Number(r.lastRate || 0)}%</td>
+              <td>${Number(r.bestScore || 0)} 分</td>
+              <td>${Number(r._attemptScore || r.attemptScore || 0)} 分</td>
+              <td>${Number(r.lastScore || 0)} / ${Number(r.lastTotal || TOTAL_SCORE)} 分｜${Number(r.lastRate || 0)}%</td>
             </tr>`;
           }).join("")}
         </tbody>
       </table>
-      <p class="muted small leaderboardNote">註：這是前端寫入的學習排行榜，適合練習交流；若要正式競賽防作弊，需改用 Cloud Functions 後端驗證成績。</p>
+      <p class="muted small leaderboardNote">註：綜合戰力分數採加權公式，刷題投入使用遞減曲線，避免只靠狂刷題衝排名；若要正式競賽防作弊，需改用 Cloud Functions 後端驗證成績。</p>
     `;
     if(table) table.innerHTML = html;
   }catch(e){
