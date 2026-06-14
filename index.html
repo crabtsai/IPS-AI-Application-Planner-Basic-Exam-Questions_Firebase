@@ -262,17 +262,14 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <script>
 // ===== 1) Firebase 設定：請到 Firebase Console → Project settings → Your apps → Web app 複製設定貼在這裡 =====
-
 const firebaseConfig = {
-  apiKey: "AIzaSyChsmSHNElQYVUNSiblN6LiYKbScP5EpkY",
-  authDomain: "ips-ai-application-basic-exam.firebaseapp.com",
-  projectId: "ips-ai-application-basic-exam",
-  storageBucket: "ips-ai-application-basic-exam.firebasestorage.app",
-  messagingSenderId: "1096961993447",
-  appId: "1:1096961993447:web:9d4633a21476f192f31042",
-  measurementId: "G-JW9645CDJP"
+  apiKey: "請貼上你的 apiKey",
+  authDomain: "請貼上你的 authDomain",
+  projectId: "請貼上你的 projectId",
+  storageBucket: "請貼上你的 storageBucket",
+  messagingSenderId: "請貼上你的 messagingSenderId",
+  appId: "請貼上你的 appId"
 };
-
 
 // 使用者輸入 userName 時，底層會轉成 userName@ipas-exam.local 給 Firebase Auth 使用。
 // 不用真的存在這個網域，也不會寄信。
@@ -361,9 +358,18 @@ function initFirebase(){
       currentUser = user || null;
       updateAuthButtons();
       if(user){
-        const profile = await ensureUserProfile(user);
-        const name = profile.displayName || user.displayName || profile.userName || user.email || "會員";
-        setAuthStatus(`目前：${name} 已登入。考完後錯題會寫入 Firestore。`, "loginOk");
+        // 先把登入狀態顯示出來，避免 Firestore profile 建立失敗時，畫面仍停在訪客模式。
+        let fallbackName = user.displayName || (user.email ? String(user.email).split("@")[0] : "會員");
+        setAuthStatus(`目前：${fallbackName} 已登入。正在確認雲端錯題紀錄權限...`, "loginOk");
+
+        try{
+          const profile = await ensureUserProfile(user);
+          const name = profile.displayName || user.displayName || profile.userName || user.email || "會員";
+          setAuthStatus(`目前：${name} 已登入。考完後錯題會寫入 Firestore。`, "loginOk");
+        }catch(e){
+          console.error("Firestore profile 建立/讀取失敗", e);
+          setAuthStatus(`目前：${fallbackName} 已登入，但 Firestore 錯題紀錄權限異常：${firebaseErrorMessage(e)}`, "error");
+        }
       }else{
         setAuthStatus("目前：訪客模式。可以練習，但不會寫入雲端錯題紀錄。", "guest");
       }
@@ -415,6 +421,10 @@ function firebaseErrorMessage(err){
     "auth/wrong-password":"密碼錯誤。",
     "auth/invalid-credential":"帳號或密碼錯誤。",
     "auth/popup-closed-by-user":"你已關閉 Google 登入視窗。",
+    "auth/popup-blocked":"瀏覽器阻擋彈出登入視窗，請允許彈出視窗或改用重新導向登入。",
+    "auth/unauthorized-domain":"這個網域尚未加入 Firebase Authentication 的 Authorized domains。",
+    "auth/permission-denied":"Firestore 權限不足，請檢查 Firestore Rules。",
+    "permission-denied":"Firestore 權限不足，請檢查 Firestore Rules。",
     "auth/operation-not-allowed":"Firebase Console 尚未啟用這個登入方式。"
   };
   return map[code] || (err && err.message ? err.message : String(err));
@@ -481,8 +491,22 @@ async function loginWithGoogle(){
   if(!auth || !db){ alert("Firebase 尚未設定，無法使用 Google 登入。"); return; }
   try{
     const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
     await auth.signInWithPopup(provider);
   }catch(e){
+    console.error("Google 登入失敗", e);
+    // 手機瀏覽器或部分瀏覽器可能阻擋 popup，改用 redirect 登入。
+    if(e && (e.code === "auth/popup-blocked" || e.code === "auth/cancelled-popup-request")){
+      try{
+        const provider = new firebase.auth.GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: "select_account" });
+        await auth.signInWithRedirect(provider);
+        return;
+      }catch(re){
+        setAuthStatus("Google 重新導向登入失敗：" + firebaseErrorMessage(re), "error");
+        return;
+      }
+    }
     setAuthStatus("Google 登入失敗：" + firebaseErrorMessage(e), "error");
   }
 }
@@ -1083,3 +1107,4 @@ loadBank();
 </script>
 </body>
 </html>
+
