@@ -104,6 +104,14 @@
     .rankBadge.top3{background:#ffedd5;color:#9a3412}
     .leaderName{font-weight:900}
     .leaderMeta{font-size:12px;color:var(--muted);margin-top:2px}
+    .myRankBox{margin-top:12px;padding:14px;border-radius:16px;background:#fff7ed;border:1px solid #fed7aa}
+    .myRankTitle{font-size:14px;font-weight:900;color:#9a3412;margin-bottom:8px}
+    .myRankLine{display:flex;gap:10px;align-items:center;flex-wrap:wrap;line-height:1.7}
+    .myRankName{font-weight:900}
+    .myRankStats{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .myRankStat{display:inline-flex;gap:4px;align-items:center;padding:5px 9px;border-radius:999px;background:#ffffff;border:1px solid var(--line);font-size:13px;font-weight:800}
+    .top30Title{margin:16px 0 8px;font-weight:900;color:var(--text)}
+    tr.currentUserRow{background:#fff7ed}
 
     html[data-theme="dark"]{
       --bg:#0f172a; --card:#111827; --text:#e5e7eb; --muted:#9ca3af;
@@ -156,6 +164,10 @@
     html[data-theme="dark"] .rankBadge.top1{background:#78350f;color:#fde68a}
     html[data-theme="dark"] .rankBadge.top2{background:#374151;color:#e5e7eb}
     html[data-theme="dark"] .rankBadge.top3{background:#7c2d12;color:#fed7aa}
+    html[data-theme="dark"] .myRankBox{background:#451a03;border-color:#92400e}
+    html[data-theme="dark"] .myRankTitle{color:#fed7aa}
+    html[data-theme="dark"] .myRankStat{background:#111827;border-color:var(--line)}
+    html[data-theme="dark"] tr.currentUserRow{background:#1e293b}
 
     @media(max-width:650px){
       .wrap{padding:12px}
@@ -1545,12 +1557,12 @@ async function loadLeaderboard(){
   if(table) table.innerHTML = "排行榜讀取中...";
 
   try{
-    const snap = await db.collection("leaderboard")
-      .limit(100)
-      .get();
+    // 為了計算「我的目前名次」，這裡需要讀取排行榜全部資料後在前端排序。
+    // 若未來人數非常多，建議改成 Cloud Functions 在後端計算排名，避免前端讀取過多文件。
+    const snap = await db.collection("leaderboard").get();
 
     const rows = [];
-    snap.forEach(doc => rows.push(doc.data() || {}));
+    snap.forEach(doc => rows.push({...(doc.data() || {}), _docId: doc.id}));
 
     rows.forEach(r => {
       r._totalPoints = totalPointsFromRow(r);
@@ -1569,14 +1581,54 @@ async function loadLeaderboard(){
       return Number(b.attemptCount || 0) - Number(a.attemptCount || 0);
     });
 
+    const currentDisplayName = normalizeLeaderboardName(getDisplayNameForLeaderboard());
+    const currentNameKey = leaderboardNameKey(currentDisplayName);
+    let myIndex = -1;
+
+    if(currentUser){
+      // 優先找「目前登入名稱」那筆紀錄；若找不到，再抓同 uid 任一筆最高紀錄。
+      myIndex = rows.findIndex(r => r.uid === currentUser.uid && r.displayNameKey === currentNameKey);
+      if(myIndex < 0) myIndex = rows.findIndex(r => r.uid === currentUser.uid);
+    }
+
+    const myRow = myIndex >= 0 ? rows[myIndex] : null;
     const topRows = rows.slice(0, 30);
 
+    const myRankHtml = currentUser
+      ? (myRow ? `
+        <div class="myRankBox">
+          <div class="myRankTitle">第一行｜我的目前名次</div>
+          <div class="myRankLine">
+            <span class="rankBadge ${myIndex === 0 ? "top1" : (myIndex === 1 ? "top2" : (myIndex === 2 ? "top3" : ""))}">${myIndex + 1}</span>
+            <span class="myRankName">${escapeHtml(myRow.displayName || currentDisplayName || "匿名會員")}</span>
+            <span>目前累積 <b>${Number(myRow._totalPoints || 0)}</b> 分</span>
+          </div>
+          <div class="myRankStats">
+            <span class="myRankStat">本次新增：${myRow.lastPointEligible === false ? "未滿 10 題" : "+" + Number(myRow._lastEarnedPoints || 0) + " 分"}</span>
+            <span class="myRankStat">有效測驗：${Number(myRow.eligibleAttemptCount || 0)} 回</span>
+            <span class="myRankStat">測驗次數：${Number(myRow.attemptCount || 0)} 回</span>
+            <span class="myRankStat">平均分：${Number(myRow.avgScore || 0)} 分</span>
+            <span class="myRankStat">最高分：${Number(myRow.bestScore || 0)} 分</span>
+          </div>
+        </div>` : `
+        <div class="myRankBox">
+          <div class="myRankTitle">第一行｜我的目前名次</div>
+          <div class="myRankLine">你目前還沒有排行榜紀錄。完成 10 題以上測驗後，這裡會顯示你的名次。</div>
+        </div>`)
+      : `
+        <div class="myRankBox">
+          <div class="myRankTitle">第一行｜我的目前名次</div>
+          <div class="myRankLine">登入後可顯示你自己的目前名次。</div>
+        </div>`;
+
     if(!topRows.length){
-      if(table) table.innerHTML = "<p class='muted'>目前還沒有排行榜資料。會員登入後完成 10 題以上測驗，就會開始累積積分。</p>";
+      if(table) table.innerHTML = `${myRankHtml}<div class="top30Title">第二行｜前三十名排行榜</div><p class='muted'>目前還沒有排行榜資料。會員登入後完成 10 題以上測驗，就會開始累積積分。</p>`;
       return;
     }
 
     const html = `
+      ${myRankHtml}
+      <div class="top30Title">第二行｜前三十名排行榜</div>
       <table class="leaderboardTable">
         <thead>
           <tr>
@@ -1601,7 +1653,7 @@ async function loadLeaderboard(){
             const lastPointText = r.lastPointEligible === false
               ? "未滿 10 題"
               : `+${Number(r._lastEarnedPoints || 0)} 分`;
-            return `<tr>
+            return `<tr class="${isMe ? "currentUserRow" : ""}">
               <td><span class="rankBadge ${rankClass}">${i+1}</span></td>
               <td>
                 <div class="leaderName">${isMe ? "⭐ " : ""}${name}</div>
@@ -1618,7 +1670,7 @@ async function loadLeaderboard(){
           }).join("")}
         </tbody>
       </table>
-      <p class="muted small leaderboardNote">註：本次新增積分只計入 10 題以上測驗，公式為「分數 × 45% + 答對率 × 35% + 題數加成 × 20%」。題數加成最多以 100 題計算；若要正式競賽防作弊，需改用 Cloud Functions 後端驗證成績。</p>
+      <p class="muted small leaderboardNote">註：第一行固定顯示自己的目前名次，即使不在前三十名也會顯示；第二行開始才是前三十名排行榜。本次新增積分只計入 10 題以上測驗，公式為「分數 × 45% + 答對率 × 35% + 題數加成 × 20%」。題數加成最多以 100 題計算；若要正式競賽防作弊，需改用 Cloud Functions 後端驗證成績。</p>
     `;
     if(table) table.innerHTML = html;
   }catch(e){
@@ -1626,7 +1678,6 @@ async function loadLeaderboard(){
     if(table) table.innerHTML = `<p class="bad">排行榜讀取失敗：${escapeHtml(firebaseErrorMessage(e))}</p>`;
   }
 }
-
 
 async function saveWrongStatsIfLoggedIn(){
   const payload = buildWrongStatsPayload();
