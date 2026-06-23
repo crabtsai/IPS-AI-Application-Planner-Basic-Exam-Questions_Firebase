@@ -369,6 +369,7 @@ const SHEET_ID = "1EEBoG6cWlhsnrkstmQakv2ZNJ7TymplYewcX30E3Khw";
 const GID = "0";
 const TOTAL_SCORE = 100;
 const PASS_SCORE = 70;
+const DEFAULT_QUESTION_COUNT = 20;
 
 let bank = [];
 let quiz = [];
@@ -928,23 +929,22 @@ function syncCountInputByScope(){
   const pool = getSelectedQuestions();
   const countInput = $("countInput");
   const startBtn = $("startBtn");
-  const maxCount = pool.length;
+  const availableCount = pool.length;
 
   if(!countInput || !startBtn) return;
 
-  if(maxCount <= 0){
-    countInput.max = 0;
-    countInput.value = 0;
-    startBtn.disabled = true;
-    updateScopeSummary();
-    return;
+  // 題數欄位不再因為目前範圍題量較少，就自動被改成 1、2、3……
+  // 預設固定保留 20，使用者手動輸入的題數也不會被覆蓋。
+  const current = Number(countInput.value);
+  if(!Number.isFinite(current) || current < 1){
+    countInput.value = DEFAULT_QUESTION_COUNT;
   }
 
-  const current = Number(countInput.value || 20);
-  countInput.max = maxCount;
-  countInput.value = Math.min(Math.max(current, 1), maxCount);
+  // 不設定 max，避免瀏覽器或程式把輸入值強制縮成可用題數。
+  countInput.removeAttribute("max");
+
   const waitingForAuth = !!auth && !authStateReady;
-  startBtn.disabled = waitingForAuth || examSaveInProgress;
+  startBtn.disabled = availableCount <= 0 || waitingForAuth || examSaveInProgress;
   updateScopeSummary();
 }
 
@@ -1169,8 +1169,14 @@ async function startQuiz(sourceQuestions = null){
       }
     }
 
-    const count = Math.min(Number($("countInput").value || 20), pool.length);
-    quiz = shuffle(pool).slice(0,count);
+    const requestedCount = Math.max(1, Number($("countInput").value) || DEFAULT_QUESTION_COUNT);
+    const count = Math.min(requestedCount, pool.length);
+
+    if(requestedCount > pool.length && $("loadMsg")){
+      $("loadMsg").textContent = `你設定 ${requestedCount} 題，但目前所選範圍只有 ${pool.length} 題可用，本次將出 ${count} 題。`;
+    }
+
+    quiz = shuffle(pool).slice(0, count);
   }
 
   index = 0; selected = null; answers = []; correctCount = 0;
