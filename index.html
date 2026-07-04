@@ -91,6 +91,21 @@
     .memberStat b{display:block;font-size:22px;margin-bottom:2px;color:var(--main)}
     .memberStat span{font-size:13px;color:var(--muted);font-weight:700}
     .memberStatsHint{margin-top:8px;line-height:1.6}
+    .memberStatsActions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+    .memberStatsActions button{padding:8px 10px;font-size:13px}
+    .scopeProgressPanel,
+    .practicedQuestionPanel{margin-top:12px;padding:13px;border-radius:14px;background:#fff;border:1px solid var(--line)}
+    .scopeProgressHeader{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+    .scopeProgressTitle{font-weight:900;color:#1e40af}
+    .scopeProgressRate{font-size:24px;font-weight:900;color:var(--main);white-space:nowrap}
+    .scopeProgressMeta{margin-top:5px;line-height:1.6}
+    .scopeProgressBar{height:12px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin-top:10px}
+    .scopeProgressBar>div{height:100%;width:0%;background:var(--main);transition:width .25s ease}
+    .practicedQuestionHeader{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}
+    .practicedQuestionTitle{font-weight:900;color:#1e40af}
+    .questionNumberList{display:flex;flex-wrap:wrap;gap:8px;max-height:250px;overflow:auto;padding:2px}
+    .questionNumberChip{display:inline-flex;align-items:center;justify-content:center;min-width:48px;padding:7px 10px;border-radius:999px;background:#eef2ff;color:#1e40af;border:1px solid #bfdbfe;font-size:13px;font-weight:900}
+    .scopeEmptyState{padding:10px;border-radius:12px;background:#f9fafb;border:1px dashed var(--line);color:var(--muted);line-height:1.6}
     .leaderboardControls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
     .leaderboardNote{margin-top:8px}
     .leaderboardTableWrap{overflow-x:auto;margin-top:12px}
@@ -157,6 +172,13 @@
     html[data-theme="dark"] .memberStatsBox{background:#0b1220;border-color:#2563eb}
     html[data-theme="dark"] .memberStatsTitle{color:#dbeafe}
     html[data-theme="dark"] .memberStat{background:#111827;border-color:var(--line)}
+    html[data-theme="dark"] .scopeProgressPanel,
+    html[data-theme="dark"] .practicedQuestionPanel{background:#111827;border-color:var(--line)}
+    html[data-theme="dark"] .scopeProgressTitle,
+    html[data-theme="dark"] .practicedQuestionTitle{color:#dbeafe}
+    html[data-theme="dark"] .scopeProgressBar{background:#334155}
+    html[data-theme="dark"] .questionNumberChip{background:#1e3a8a;color:#dbeafe;border-color:#2563eb}
+    html[data-theme="dark"] .scopeEmptyState{background:#0b1220;border-color:var(--line)}
     html[data-theme="dark"] .leaderboardTable th{background:#0b1220;color:var(--muted)}
     html[data-theme="dark"] .leaderboardTable th,
     html[data-theme="dark"] .leaderboardTable td{border-bottom-color:var(--line)}
@@ -184,6 +206,11 @@
       .scopeItem input{width:auto}
       .authGrid{grid-template-columns:1fr}
       .memberStatGrid{grid-template-columns:1fr}
+      .memberStatsTitle{flex-direction:column}
+      .memberStatsActions{width:100%;justify-content:flex-start}
+      .memberStatsActions button{width:100%}
+      .scopeProgressHeader{flex-direction:column}
+      .practicedQuestionHeader{align-items:flex-start;flex-direction:column}
       .topFollowBar{justify-content:flex-start}
     }
   </style>
@@ -257,8 +284,12 @@
     <h2>考前設定</h2>
     <div id="memberStudyStatsBox" class="memberStatsBox hidden">
       <div class="memberStatsTitle">
-        <span>會員學習狀態</span>
-        <button class="ghost" id="refreshMemberStatsBtn" type="button">重新整理狀態</button>
+        <span>學員學習狀態</span>
+        <div class="memberStatsActions">
+          <button class="ghost" id="showScopeProgressBtn" type="button">顯示範圍進度</button>
+          <button class="ghost" id="showPracticedNumbersBtn" type="button">查看已練題號</button>
+          <button class="ghost" id="refreshMemberStatsBtn" type="button">重新整理狀態</button>
+        </div>
       </div>
       <div class="memberStatGrid">
         <div class="memberStat"><b id="practicedCountText">0</b><span>已練習題目</span></div>
@@ -266,6 +297,29 @@
         <div class="memberStat"><b id="masteredWrongCountText">0</b><span>已掌握錯題</span></div>
       </div>
       <div id="memberStatsHint" class="memberStatsHint muted small">登入後會自動讀取你的練習狀態。</div>
+
+      <div id="selectedScopeProgressBox" class="scopeProgressPanel hidden">
+        <div class="scopeProgressHeader">
+          <div>
+            <div class="scopeProgressTitle">目前勾選範圍的練習進度</div>
+            <div id="scopeProgressMeta" class="scopeProgressMeta muted small">正在計算...</div>
+          </div>
+          <div id="scopeProgressRateText" class="scopeProgressRate">0%</div>
+        </div>
+        <div class="scopeProgressBar" aria-label="目前勾選範圍練習進度">
+          <div id="scopeProgressBarFill"></div>
+        </div>
+      </div>
+
+      <div id="practicedQuestionListBox" class="practicedQuestionPanel hidden">
+        <div class="practicedQuestionHeader">
+          <div>
+            <div class="practicedQuestionTitle">目前勾選範圍內已練習題號</div>
+            <div id="practicedQuestionSummary" class="muted small">正在整理題號...</div>
+          </div>
+        </div>
+        <div id="practicedQuestionNumberList" class="questionNumberList"></div>
+      </div>
     </div>
     <div class="row">
       <label>題數 <input id="countInput" type="number" min="1" value="20"></label>
@@ -443,7 +497,7 @@ function updateAuthButtons(){
   const loggedIn = !!currentUser;
   const configured = !!auth && !!db;
   ["loginBtn", "registerBtn", "googleLoginBtn"].forEach(id => { if($(id)) $(id).disabled = loggedIn || !configured; });
-  ["historyWrongBtn", "historyWrongBtnFinish", "clearPracticeHistoryBtn", "clearPracticeHistoryBtnFinish", "clearWrongStatsBtn", "clearWrongStatsBtnFinish"].forEach(id => {
+  ["historyWrongBtn", "historyWrongBtnFinish", "clearPracticeHistoryBtn", "clearPracticeHistoryBtnFinish", "clearWrongStatsBtn", "clearWrongStatsBtnFinish", "showScopeProgressBtn", "showPracticedNumbersBtn", "refreshMemberStatsBtn"].forEach(id => {
     if($(id)) $(id).disabled = !loggedIn || !configured;
   });
   if($("logoutBtn")) $("logoutBtn").disabled = !loggedIn || !configured;
@@ -463,6 +517,177 @@ function setMemberStatsLoading(message="正在讀取會員學習狀態..."){
 function hideMemberStudyStats(){
   const box = $("memberStudyStatsBox");
   if(box) box.classList.add("hidden");
+  hideScopeStudyPanels();
+}
+
+function hideScopeStudyPanels(){
+  const progressBox = $("selectedScopeProgressBox");
+  const numberBox = $("practicedQuestionListBox");
+  if(progressBox) progressBox.classList.add("hidden");
+  if(numberBox) numberBox.classList.add("hidden");
+  if($("showScopeProgressBtn")) $("showScopeProgressBtn").textContent = "顯示範圍進度";
+  if($("showPracticedNumbersBtn")) $("showPracticedNumbersBtn").textContent = "查看已練題號";
+}
+
+function isScopeProgressVisible(){
+  const box = $("selectedScopeProgressBox");
+  return !!box && !box.classList.contains("hidden");
+}
+
+function isPracticedNumberListVisible(){
+  const box = $("practicedQuestionListBox");
+  return !!box && !box.classList.contains("hidden");
+}
+
+function practicedQuestionDisplayNo(item){
+  const no = questionNo(item);
+  if(no) return no;
+  return item && item.rowIndex ? `列 ${item.rowIndex}` : getQuestionKey(item);
+}
+
+function compareQuestionNumberText(a, b){
+  return String(a || "").localeCompare(String(b || ""), "zh-Hant", {
+    numeric:true,
+    sensitivity:"base"
+  });
+}
+
+async function getSelectedScopePracticeSummary(force=false){
+  if(!currentUser || !db) throw new Error("請先登入會員。 ");
+
+  const selectedItems = getSelectedQuestions();
+  const practicedKeys = await getPracticeHistoryKeys(force);
+  const practicedItems = selectedItems
+    .filter(item => practicedKeys.has(getQuestionKey(item)))
+    .sort((a, b) => compareQuestionNumberText(practicedQuestionDisplayNo(a), practicedQuestionDisplayNo(b)));
+
+  const totalCount = selectedItems.length;
+  const practicedCount = practicedItems.length;
+  const remainingCount = Math.max(0, totalCount - practicedCount);
+  const rate = totalCount ? Math.round((practicedCount / totalCount) * 1000) / 10 : 0;
+
+  return {
+    selectedItems,
+    practicedItems,
+    totalCount,
+    practicedCount,
+    remainingCount,
+    rate,
+    selectedScopeCount:selectedScopes.size,
+    totalScopeCount:scopeMeta.length
+  };
+}
+
+async function renderSelectedScopeProgress(force=false){
+  const box = $("selectedScopeProgressBox");
+  if(!box) return;
+
+  if(!currentUser || !db){
+    hideScopeStudyPanels();
+    alert("請先登入會員，才能查看所選題庫範圍的練習進度。");
+    return;
+  }
+
+  box.classList.remove("hidden");
+  if($("showScopeProgressBtn")) $("showScopeProgressBtn").textContent = "收合範圍進度";
+  if($("scopeProgressRateText")) $("scopeProgressRateText").textContent = "...";
+  if($("scopeProgressMeta")) $("scopeProgressMeta").textContent = "正在依目前勾選的題庫範圍計算...";
+  if($("scopeProgressBarFill")) $("scopeProgressBarFill").style.width = "0%";
+
+  try{
+    const summary = await getSelectedScopePracticeSummary(force);
+    const safeRate = Math.max(0, Math.min(100, Number(summary.rate || 0)));
+
+    if($("scopeProgressRateText")) $("scopeProgressRateText").textContent = `${safeRate}%`;
+    if($("scopeProgressBarFill")) $("scopeProgressBarFill").style.width = `${safeRate}%`;
+    if($("scopeProgressMeta")){
+      if(!summary.totalCount){
+        $("scopeProgressMeta").textContent = "目前沒有勾選任何題庫範圍，請先在下方至少勾選一個範圍。";
+      }else{
+        $("scopeProgressMeta").innerHTML =
+          `已選 <b>${summary.selectedScopeCount}</b> / ${summary.totalScopeCount} 個範圍，共 <b>${summary.totalCount}</b> 題；` +
+          `已練習 <b>${summary.practicedCount}</b> 題，尚未練習 <b>${summary.remainingCount}</b> 題。`;
+      }
+    }
+  }catch(e){
+    console.error("計算所選範圍進度失敗", e);
+    if($("scopeProgressRateText")) $("scopeProgressRateText").textContent = "--";
+    if($("scopeProgressMeta")) $("scopeProgressMeta").textContent = `讀取失敗：${firebaseErrorMessage(e)}`;
+  }
+}
+
+async function renderPracticedQuestionNumbers(force=false){
+  const box = $("practicedQuestionListBox");
+  const list = $("practicedQuestionNumberList");
+  if(!box || !list) return;
+
+  if(!currentUser || !db){
+    hideScopeStudyPanels();
+    alert("請先登入會員，才能查看已練習過的題號。");
+    return;
+  }
+
+  box.classList.remove("hidden");
+  if($("showPracticedNumbersBtn")) $("showPracticedNumbersBtn").textContent = "收合已練題號";
+  if($("practicedQuestionSummary")) $("practicedQuestionSummary").textContent = "正在依目前勾選範圍整理題號...";
+  list.innerHTML = `<div class="scopeEmptyState">讀取中...</div>`;
+
+  try{
+    const summary = await getSelectedScopePracticeSummary(force);
+    if($("practicedQuestionSummary")){
+      $("practicedQuestionSummary").textContent = summary.totalCount
+        ? `目前勾選範圍共 ${summary.totalCount} 題，其中已練習 ${summary.practicedCount} 題。`
+        : "目前沒有勾選任何題庫範圍。";
+    }
+
+    if(!summary.totalCount){
+      list.innerHTML = `<div class="scopeEmptyState">請先在「選擇練習範圍」至少勾選一個範圍。</div>`;
+      return;
+    }
+
+    if(!summary.practicedItems.length){
+      list.innerHTML = `<div class="scopeEmptyState">目前勾選的範圍內，還沒有已練習題目。</div>`;
+      return;
+    }
+
+    list.innerHTML = summary.practicedItems.map(item => {
+      const displayNo = practicedQuestionDisplayNo(item);
+      const title = `${scopeName(item)}｜${item.q || ""}`;
+      return `<span class="questionNumberChip" title="${escapeHtml(title)}">${escapeHtml(displayNo)}</span>`;
+    }).join("");
+  }catch(e){
+    console.error("讀取已練習題號失敗", e);
+    if($("practicedQuestionSummary")) $("practicedQuestionSummary").textContent = "讀取失敗";
+    list.innerHTML = `<div class="scopeEmptyState">${escapeHtml(firebaseErrorMessage(e))}</div>`;
+  }
+}
+
+async function toggleSelectedScopeProgress(){
+  const box = $("selectedScopeProgressBox");
+  if(!box) return;
+  if(!box.classList.contains("hidden")){
+    box.classList.add("hidden");
+    if($("showScopeProgressBtn")) $("showScopeProgressBtn").textContent = "顯示範圍進度";
+    return;
+  }
+  await renderSelectedScopeProgress(false);
+}
+
+async function togglePracticedQuestionNumbers(){
+  const box = $("practicedQuestionListBox");
+  if(!box) return;
+  if(!box.classList.contains("hidden")){
+    box.classList.add("hidden");
+    if($("showPracticedNumbersBtn")) $("showPracticedNumbersBtn").textContent = "查看已練題號";
+    return;
+  }
+  await renderPracticedQuestionNumbers(false);
+}
+
+async function refreshVisibleScopeStudyPanels(force=false){
+  if(!currentUser || !db) return;
+  if(isScopeProgressVisible()) await renderSelectedScopeProgress(force);
+  if(isPracticedNumberListVisible()) await renderPracticedQuestionNumbers(false);
 }
 
 function renderMemberStudyStats(stats, hintText=""){
@@ -951,6 +1176,7 @@ function syncCountInputByScope(){
 function updateScopeSelection(){
   selectedScopes = new Set([...document.querySelectorAll(".scopeCheckbox:checked")].map(cb => cb.value));
   syncCountInputByScope();
+  refreshVisibleScopeStudyPanels(false);
 }
 
 function setAllScopes(checked){
@@ -1111,6 +1337,7 @@ async function loadBank(){
     if(deduped.missingPermanentIdCount) warnings.push(`${deduped.missingPermanentIdCount} 題沒有永久題號，修改題目文字後可能被視為新題`);
     $("loadMsg").textContent = `題庫讀取成功：可用 ${bank.length} 題，已預設全選 ${scopeMeta.length} 個範圍。${warnings.length ? " 注意：" + warnings.join("；") + "。" : ""}`;
     refreshMemberStudyStats();
+    refreshVisibleScopeStudyPanels(false);
   }catch(e){
     $("loadMsg").innerHTML =
       `讀取失敗：${escapeHtml(e.message)}<br>` +
@@ -1597,6 +1824,7 @@ async function savePracticeHistoryIfLoggedIn(){
     if(box){
       box.innerHTML += `<br><span class="muted small">已將本回 ${newKeys.length} 題合併寫入單一練習紀錄文件；新增不重複題目 ${result.uniqueNewCount} 題，目前累積 ${practiceHistoryKeyCache.size} 題。下次一般模擬考會自動排除。</span>`;
     }
+    await refreshVisibleScopeStudyPanels(false);
     return true;
   }catch(e){
     console.error(e);
@@ -1648,6 +1876,7 @@ async function clearPracticeHistory(){
     invalidateMemberStatsCache();
     alert("已清除單一練習紀錄文件中的全部已練題號。題目會重新出現在一般模擬考。");
     await refreshMemberStudyStats(true);
+    await refreshVisibleScopeStudyPanels(false);
     if($("loadMsg") && bank.length){
       $("loadMsg").textContent = `已清除已練習紀錄。題庫共 ${bank.length} 題，可重新抽題。`;
     }
@@ -2138,7 +2367,12 @@ $("clearWrongStatsBtn").onclick = clearWrongStats;
 $("clearWrongStatsBtnFinish").onclick = clearWrongStats;
 $("reloadLeaderboardBtn").onclick = loadLeaderboard;
 $("hideLeaderboardBtn").onclick = () => $("leaderboardBox").classList.add("hidden");
-$("refreshMemberStatsBtn").onclick = () => refreshMemberStudyStats(true);
+$("showScopeProgressBtn").onclick = toggleSelectedScopeProgress;
+$("showPracticedNumbersBtn").onclick = togglePracticedQuestionNumbers;
+$("refreshMemberStatsBtn").onclick = async () => {
+  await refreshMemberStudyStats(true);
+  await refreshVisibleScopeStudyPanels(false);
+};
 $("loginBtn").onclick = loginMember;
 $("registerBtn").onclick = registerMember;
 $("googleLoginBtn").onclick = loginWithGoogle;
