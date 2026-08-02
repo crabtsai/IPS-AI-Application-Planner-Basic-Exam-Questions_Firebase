@@ -32,6 +32,9 @@
     .option.selected{border-color:var(--main);background:#eff6ff}
     .option.correct{border-color:var(--ok);background:#ecfdf5;color:#065f46}
     .option.wrong{border-color:var(--bad);background:#fef2f2;color:#991b1b}
+    .option:disabled{opacity:1;cursor:default}
+    .quickAnswerHint{margin:12px 0 4px;padding:9px 11px;border-radius:12px;background:#eef2ff;color:#1e40af;border:1px solid #bfdbfe;font-size:13px;font-weight:800}
+    .submittedNotice{margin-top:12px;padding:10px 12px;border-radius:12px;background:#f9fafb;border:1px solid var(--line);font-weight:800}
     .result{font-weight:800;font-size:18px;margin-top:12px}
     .ok{color:var(--ok)} .bad{color:var(--bad)}
     .bar{height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin-top:8px}
@@ -146,6 +149,8 @@
     html[data-theme="dark"] .option.selected{border-color:#60a5fa;background:#1e3a8a;color:#dbeafe}
     html[data-theme="dark"] .option.correct{border-color:#22c55e;background:#052e16;color:#bbf7d0}
     html[data-theme="dark"] .option.wrong{border-color:#ef4444;background:#450a0a;color:#fecaca}
+    html[data-theme="dark"] .quickAnswerHint{background:#1e3a8a;color:#dbeafe;border-color:#2563eb}
+    html[data-theme="dark"] .submittedNotice{background:#0b1220;border-color:var(--line)}
     html[data-theme="dark"] .stat,
     html[data-theme="dark"] th,
     html[data-theme="dark"] .summaryBox,
@@ -360,11 +365,12 @@
     <div class="bar"><div id="progressBar"></div></div>
     <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
     <div id="questionText" class="qtitle"></div>
+    <div class="quickAnswerHint">⚡ 快速作答：直接點選選項，即刻送出答案</div>
     <div id="options"></div>
     <div id="feedback" class="muted"></div>
     <div class="row" style="margin-top:14px">
-      <button id="submitBtn">確認答案</button>
-      <button class="secondary" id="nextBtn" disabled>下一題</button>
+      <button id="submitBtn" class="hidden" type="button">確認答案</button>
+      <button class="secondary" id="nextBtn" type="button" disabled>下一題</button>
     </div>
   </div>
 
@@ -1430,6 +1436,7 @@ function renderQuestion(){
   $("feedback").innerHTML = "";
   $("submitBtn").disabled = false;
   $("nextBtn").disabled = true;
+  $("nextBtn").textContent = "下一題";
 
   const letters = ["A","B","C","D"];
   $("options").innerHTML = "";
@@ -1438,16 +1445,24 @@ function renderQuestion(){
     btn.className = "option";
     btn.textContent = `${letters[i]}. ${opt}`;
     btn.onclick = () => {
+      // 快速作答：點選選項後立即送出，避免再按一次「確認答案」。
+      if($("submitBtn").disabled) return;
       selected = i;
       [...document.querySelectorAll(".option")].forEach(x=>x.classList.remove("selected"));
       btn.classList.add("selected");
+      submitAnswer();
     };
     $("options").appendChild(btn);
   });
 }
 
 function submitAnswer(){
+  // 防止快速連點造成同一題被重複送出。
+  if($("submitBtn").disabled) return;
   if(selected === null){ alert("請先選一個答案"); return; }
+  $("submitBtn").disabled = true;
+  [...document.querySelectorAll(".option")].forEach(btn => btn.disabled = true);
+
   const item = quiz[index];
   const correct = answerIndex(item);
   const isCorrect = selected === correct;
@@ -1455,8 +1470,8 @@ function submitAnswer(){
   if(isCorrect) correctCount++;
 
   $("scoreText").textContent = `目前答對：${correctCount}`;
-  $("submitBtn").disabled = true;
   $("nextBtn").disabled = false;
+  $("nextBtn").textContent = index === quiz.length - 1 ? "查看結果" : "下一題";
 
   if(mode === "instant"){
     [...document.querySelectorAll(".option")].forEach((btn,i)=>{
@@ -1467,6 +1482,8 @@ function submitAnswer(){
     $("feedback").innerHTML =
       `<div class="result ${isCorrect ? "ok" : "bad"}">${isCorrect ? "答對了！" : "答錯了！"} 正解：${correct >= 0 ? letters[correct] : escapeHtml(item.ans)}</div>` +
       (item.exp ? `<p><b>解析：</b>${escapeHtml(item.exp)}</p>` : "");
+  }else{
+    $("feedback").innerHTML = `<div class="submittedNotice">答案已送出，考試結束後統一公布結果。</div>`;
   }
 }
 
