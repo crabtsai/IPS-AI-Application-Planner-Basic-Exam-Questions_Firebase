@@ -370,7 +370,7 @@
     <div id="feedback" class="muted"></div>
     <div class="row" style="margin-top:14px">
       <button id="submitBtn" class="hidden" type="button">確認答案</button>
-      <button class="secondary" id="nextBtn" type="button" disabled>下一題</button>
+      <button class="secondary hidden" id="nextBtn" type="button" disabled>下一題</button>
     </div>
   </div>
 
@@ -1469,22 +1469,8 @@ function submitAnswer(){
   answers.push({item, selected, correct, isCorrect});
   if(isCorrect) correctCount++;
 
-  $("scoreText").textContent = `目前答對：${correctCount}`;
-  $("nextBtn").disabled = false;
-  $("nextBtn").textContent = index === quiz.length - 1 ? "查看結果" : "下一題";
-
-  if(mode === "instant"){
-    [...document.querySelectorAll(".option")].forEach((btn,i)=>{
-      if(i === correct) btn.classList.add("correct");
-      if(i === selected && !isCorrect) btn.classList.add("wrong");
-    });
-    const letters = ["A","B","C","D"];
-    $("feedback").innerHTML =
-      `<div class="result ${isCorrect ? "ok" : "bad"}">${isCorrect ? "答對了！" : "答錯了！"} 正解：${correct >= 0 ? letters[correct] : escapeHtml(item.ans)}</div>` +
-      (item.exp ? `<p><b>解析：</b>${escapeHtml(item.exp)}</p>` : "");
-  }else{
-    $("feedback").innerHTML = `<div class="submittedNotice">答案已送出，考試結束後統一公布結果。</div>`;
-  }
+  // 極速作答：點選答案後立即進入下一題；最後一題直接顯示結果。
+  nextQuestion();
 }
 
 function nextQuestion(){
