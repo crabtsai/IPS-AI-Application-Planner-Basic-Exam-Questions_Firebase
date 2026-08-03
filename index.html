@@ -365,12 +365,12 @@
     <div class="bar"><div id="progressBar"></div></div>
     <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
     <div id="questionText" class="qtitle"></div>
-    <div class="quickAnswerHint">⚡ 快速作答：直接點選選項，即刻送出答案</div>
+    <div class="quickAnswerHint">⚡ 快速作答：第一次點選立即判分；看完解析後，再點任一選項或「下一題」繼續</div>
     <div id="options"></div>
     <div id="feedback" class="muted"></div>
     <div class="row" style="margin-top:14px">
       <button id="submitBtn" class="hidden" type="button">確認答案</button>
-      <button class="secondary hidden" id="nextBtn" type="button" disabled>下一題</button>
+      <button class="secondary" id="nextBtn" type="button" disabled>下一題</button>
     </div>
   </div>
 
@@ -436,6 +436,8 @@ let bank = [];
 let quiz = [];
 let index = 0;
 let selected = null;
+let answerSubmitted = false;
+let answerSubmittedAt = 0;
 let answers = [];
 let correctCount = 0;
 let mode = "instant";
@@ -1423,6 +1425,9 @@ async function startQuiz(sourceQuestions = null){
 
 function renderQuestion(){
   selected = null;
+  answerSubmitted = false;
+  answerSubmittedAt = 0;
+
   const item = quiz[index];
   $("progressText").textContent = `第 ${index+1} / ${quiz.length} 題`;
   $("scoreText").textContent = `目前答對：${correctCount}`;
@@ -1436,7 +1441,7 @@ function renderQuestion(){
   $("feedback").innerHTML = "";
   $("submitBtn").disabled = false;
   $("nextBtn").disabled = true;
-  $("nextBtn").textContent = "下一題";
+  $("nextBtn").textContent = index === quiz.length - 1 ? "查看結果" : "下一題";
 
   const letters = ["A","B","C","D"];
   $("options").innerHTML = "";
@@ -1445,23 +1450,33 @@ function renderQuestion(){
     btn.className = "option";
     btn.textContent = `${letters[i]}. ${opt}`;
     btn.onclick = () => {
-      // 快速作答：點選選項後立即送出，避免再按一次「確認答案」。
-      if($("submitBtn").disabled) return;
-      selected = i;
-      [...document.querySelectorAll(".option")].forEach(x=>x.classList.remove("selected"));
-      btn.classList.add("selected");
-      submitAnswer();
+      // 第一次點選：立即送出並顯示對錯 / 解析。
+      if(!answerSubmitted){
+        selected = i;
+        [...document.querySelectorAll(".option")].forEach(x=>x.classList.remove("selected"));
+        btn.classList.add("selected");
+        submitAnswer();
+        return;
+      }
+
+      // 已送出後：任一選項都可當作「下一題」。
+      // 短暫防誤觸，避免雙擊讓解析一閃而過。
+      if(Date.now() - answerSubmittedAt < 350) return;
+      nextQuestion();
     };
     $("options").appendChild(btn);
   });
 }
 
 function submitAnswer(){
-  // 防止快速連點造成同一題被重複送出。
-  if($("submitBtn").disabled) return;
+  // 防止同一題被重複計分。
+  if(answerSubmitted) return;
   if(selected === null){ alert("請先選一個答案"); return; }
+
+  answerSubmitted = true;
+  answerSubmittedAt = Date.now();
   $("submitBtn").disabled = true;
-  [...document.querySelectorAll(".option")].forEach(btn => btn.disabled = true);
+  $("nextBtn").disabled = false;
 
   const item = quiz[index];
   const correct = answerIndex(item);
@@ -1469,11 +1484,35 @@ function submitAnswer(){
   answers.push({item, selected, correct, isCorrect});
   if(isCorrect) correctCount++;
 
-  // 極速作答：點選答案後立即進入下一題；最後一題直接顯示結果。
-  nextQuestion();
+  $("scoreText").textContent = `目前答對：${correctCount}`;
+
+  if(mode === "instant"){
+    [...document.querySelectorAll(".option")].forEach((btn,i)=>{
+      btn.classList.remove("selected");
+      if(i === correct) btn.classList.add("correct");
+      if(i === selected && !isCorrect) btn.classList.add("wrong");
+    });
+
+    const letters = ["A","B","C","D"];
+    $("feedback").innerHTML =
+      `<div class="result ${isCorrect ? "ok" : "bad"}">${isCorrect ? "答對了！" : "答錯了！"} 正解：${correct >= 0 ? letters[correct] : escapeHtml(item.ans)}</div>` +
+      (item.exp ? `<p><b>解析：</b>${escapeHtml(item.exp)}</p>` : "") +
+      `<p class="small"><b>繼續作答：</b>可再點任一選項，或按「${index === quiz.length - 1 ? "查看結果" : "下一題"}」。</p>`;
+  }else{
+    // 考試模式不提前顯示正解與解析。
+    [...document.querySelectorAll(".option")].forEach((btn,i)=>{
+      btn.classList.toggle("selected", i === selected);
+    });
+    $("feedback").innerHTML =
+      `<div class="result ok">答案已送出。</div>` +
+      `<p class="small">可再點任一選項，或按「${index === quiz.length - 1 ? "查看結果" : "下一題"}」繼續。</p>`;
+  }
 }
 
 function nextQuestion(){
+  // 尚未作答時，不允許直接跳題。
+  if(!answerSubmitted) return;
+
   index++;
   if(index >= quiz.length) finishQuiz();
   else renderQuestion();
