@@ -469,6 +469,7 @@ let examSaveInProgress = false;
 const MEMBER_STATS_CACHE_TTL_MS = 3 * 60 * 1000;
 const PRACTICE_HISTORY_DOC_ID = "main";
 const PRACTICE_HISTORY_SCHEMA_VERSION = "single_document_v2";
+const FIRESTORE_READ_OPTIMIZATION_VERSION = "low_read_v3";
 
 const $ = id => document.getElementById(id);
 
@@ -572,7 +573,7 @@ async function getSelectedScopePracticeSummary(force=false){
   if(!currentUser || !db) throw new Error("請先登入會員。 ");
 
   const selectedItems = getSelectedQuestions();
-  const practicedKeys = await getPracticeHistoryKeys(force);
+  const practicedKeys = await getPracticeHistoryKeys(forcePracticeHistory);
   const practicedItems = selectedItems
     .filter(item => practicedKeys.has(getQuestionKey(item)))
     .sort((a, b) => compareQuestionNumberText(practicedQuestionDisplayNo(a), practicedQuestionDisplayNo(b)));
@@ -735,7 +736,9 @@ function scheduleMemberStatsRefresh(delayMs=900){
   if(memberStatsRefreshTimer) clearTimeout(memberStatsRefreshTimer);
   memberStatsRefreshTimer = setTimeout(() => {
     memberStatsRefreshTimer = null;
-    refreshMemberStudyStats(true);
+    // 背景刷新只強制重算錯題統計；practiceHistory 沿用目前快取，
+    // 避免每完成一回測驗又多讀一次 practiceHistory/main。
+    refreshMemberStudyStats(true, false);
   }, delayMs);
 }
 
@@ -753,7 +756,7 @@ async function getAggregateCount(queryRef){
   return snap.size;
 }
 
-async function refreshMemberStudyStats(force=false){
+async function refreshMemberStudyStats(force=false, forcePracticeHistory=false){
   const box = $("memberStudyStatsBox");
   if(!box) return;
 
@@ -1968,7 +1971,7 @@ async function clearPracticeHistory(){
     practiceHistoryRevisionCache++;
     invalidateMemberStatsCache();
     alert("已清除單一練習紀錄文件中的全部已練題號。題目會重新出現在一般模擬考。");
-    await refreshMemberStudyStats(true);
+    await refreshMemberStudyStats(true, false);
     await refreshVisibleScopeStudyPanels(false);
     if($("loadMsg") && bank.length){
       $("loadMsg").textContent = `已清除已練習紀錄。題庫共 ${bank.length} 題，可重新抽題。`;
@@ -1999,7 +2002,7 @@ async function clearWrongStats(){
     }, {merge:true});
     invalidateMemberStatsCache();
     alert(`已刪除 ${deleted} 筆錯題統計。`);
-    refreshMemberStudyStats(true);
+    refreshMemberStudyStats(true, false);
   }catch(e){
     console.error(e);
     alert("刪除錯題統計失敗：" + firebaseErrorMessage(e));
@@ -2475,39 +2478,86 @@ async function practiceHistoryWrong(){
   }
 
   try{
-    const snap = await db.collection("users").doc(currentUser.uid).collection("wrongStats").get();
+    const requestedCount = getWrongPracticeRequestedCount();
+    const wrongStatsRef = db.collection("users").doc(currentUser.uid).collection("wrongStats");
+
+    // 低讀取量策略：
+    // 1. 只查 mastered == false 的「目前錯題」。
+    // 2. 最多只讀使用者設定的錯題練習題數。
+    // 3. 優先依 wrongCount 由高到低，讓最常答錯的題目先被抽到。
+    // 若 Firestore 尚未建立 mastered + wrongCount 複合索引，
+    // 自動退回 where(mastered == false) + limit(N)，仍維持低讀取量，
+    // 不會退回整包 wrongStats.get()。
+    let snap = null;
+    let usedPriorityOrder = true;
+
+    try{
+      snap = await wrongStatsRef
+        .where("mastered", "==", false)
+        .orderBy("wrongCount", "desc")
+        .limit(requestedCount)
+        .get();
+    }catch(indexError){
+      const code = String(indexError && indexError.code || "");
+      const msg = String(indexError && indexError.message || "");
+      const isIndexIssue =
+        code.includes("failed-precondition") ||
+        /index/i.test(msg);
+
+      if(!isIndexIssue) throw indexError;
+
+      console.warn("歷史錯題排序查詢需要 Firestore 複合索引，已改用低讀取量備援查詢。", indexError);
+      usedPriorityOrder = false;
+      snap = await wrongStatsRef
+        .where("mastered", "==", false)
+        .limit(requestedCount)
+        .get();
+    }
+
     const stats = [];
-    snap.forEach(doc => {
-      const data = doc.data() || {};
-      if(data.mastered !== true) stats.push(data);
-    });
+    snap.forEach(doc => stats.push(doc.data() || {}));
 
     if(!stats.length){
-      alert("目前沒有歷史錯題紀錄。先登入後完成一回測驗，答錯的題目才會累積在這裡。或你的錯題都已標記掌握。");
+      alert("目前沒有未掌握的歷史錯題。可能尚未累積錯題，或目前錯題都已標記掌握。");
       return;
     }
 
-    stats.sort((a,b) => Number(b.wrongCount || 0) - Number(a.wrongCount || 0));
+    // 有排序索引時，Firestore 已經依 wrongCount 排好；
+    // 備援模式只在本次讀回的少量資料內排序，不增加任何 Firestore Reads。
+    if(!usedPriorityOrder){
+      stats.sort((a,b) => Number(b.wrongCount || 0) - Number(a.wrongCount || 0));
+    }
+
     const itemMap = new Map(bank.map(item => [getQuestionKey(item), item]));
     const wrongItems = [];
     const missing = [];
+
     stats.forEach(s => {
       const key = String(s.questionNo || "").trim();
       const item = itemMap.get(key);
       if(item) wrongItems.push(item);
-      else missing.push(key);
+      else if(key) missing.push(key);
     });
 
     if(!wrongItems.length){
-      alert("有歷史錯題紀錄，但目前題庫找不到對應題號。請確認題庫的題號沒有改過。\n找不到的題號：" + missing.slice(0,10).join("、"));
+      alert("有歷史錯題紀錄，但這次讀到的題號在目前題庫都找不到。\n請確認題庫題號沒有被修改。\n找不到的題號：" + missing.slice(0,10).join("、"));
       return;
     }
 
     if(missing.length){
-      alert(`有 ${missing.length} 題歷史錯題在目前題庫找不到，會先練找得到的 ${wrongItems.length} 題。`);
+      console.warn(`本次低讀取量查詢有 ${missing.length} 題在目前題庫找不到：`, missing);
+      if($("loadMsg")){
+        $("loadMsg").textContent =
+          `本次讀取 ${stats.length} 筆未掌握錯題，其中 ${missing.length} 題目前題庫找不到；將練習可對應的 ${wrongItems.length} 題。`;
+      }
+    }else if($("loadMsg")){
+      $("loadMsg").textContent =
+        `低讀取量錯題複習：本次僅讀取 ${stats.length} 筆未掌握錯題${usedPriorityOrder ? "，並優先挑選錯誤次數較高的題目" : ""}。`;
     }
+
     startQuiz(wrongItems, "history_wrong");
   }catch(e){
+    console.error("讀取歷史錯題失敗", e);
     alert("讀取歷史錯題失敗：" + firebaseErrorMessage(e));
   }
 }
@@ -2536,7 +2586,7 @@ $("hideLeaderboardBtn").onclick = () => $("leaderboardBox").classList.add("hidde
 $("showScopeProgressBtn").onclick = toggleSelectedScopeProgress;
 $("showPracticedNumbersBtn").onclick = togglePracticedQuestionNumbers;
 $("refreshMemberStatsBtn").onclick = async () => {
-  await refreshMemberStudyStats(true);
+  await refreshMemberStudyStats(true, true);
   await refreshVisibleScopeStudyPanels(false);
 };
 $("loginBtn").onclick = loginMember;
