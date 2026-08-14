@@ -89,7 +89,7 @@
     .fbFollowLink:hover{background:#dbeafe;border-color:#93c5fd}
     .memberStatsBox{margin:0 0 14px;padding:12px;border-radius:16px;background:#f8fbff;border:1px solid #bfdbfe}
     .memberStatsTitle{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;font-weight:900;color:#1e40af}
-    .memberStatGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+    .memberStatGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
     .memberStat{padding:11px;border-radius:14px;background:#fff;border:1px solid var(--line);text-align:center}
     .memberStat b{display:block;font-size:22px;margin-bottom:2px;color:var(--main)}
     .memberStat span{font-size:13px;color:var(--muted);font-weight:700}
@@ -268,8 +268,12 @@
       <button class="warn" id="clearPracticeHistoryBtn" type="button">清除已練習紀錄</button>
       <button class="warn" id="clearWrongStatsBtn" type="button">刪除錯題統計</button>
     </div>
+    <div class="row" style="margin-top:10px">
+      <label>錯題練習題數 <input id="wrongPracticeCountInput" type="number" min="1" value="20"></label>
+      <span class="muted small">套用於「只練本次錯題」與「錯題內容複習」；超過可用錯題時會自動改為全部。</span>
+    </div>
     <div class="authHint muted small" style="margin-top:10px">
-      未登入就是訪客模式，可以練習但不會記錄雲端錯題與練習歷史。登入後，已練習題號會集中保存在 Firestore 的單一文件中，不再每題建立一份文件；一般模擬考會自動排除已練習題目。排行榜以「使用者帳號 + 顯示名稱」分開統計，換名稱不會覆蓋舊名稱紀錄。
+      未登入就是訪客模式，可以練習但不會記錄雲端錯題與練習歷史。登入後，已練習題號會集中保存在 Firestore 的單一文件中，不再每題建立一份文件；一般模擬考會自動排除已練習題目。錯題練習會另外累積每題複習次數，答對後自動標記為已掌握。排行榜以「使用者帳號 + 顯示名稱」分開統計，換名稱不會覆蓋舊名稱紀錄。
     </div>
   </div>
 
@@ -301,6 +305,7 @@
         <div class="memberStat"><b id="practicedCountText">0</b><span>已練習題目</span></div>
         <div class="memberStat"><b id="activeWrongCountText">0</b><span>目前錯題</span></div>
         <div class="memberStat"><b id="masteredWrongCountText">0</b><span>已掌握錯題</span></div>
+        <div class="memberStat"><b id="wrongPracticeAttemptCountText">0</b><span>錯題複習作答</span></div>
       </div>
       <div id="memberStatsHint" class="memberStatsHint muted small">登入後會自動讀取你的練習狀態。</div>
 
@@ -458,6 +463,7 @@ let practiceHistoryRevisionCache = 0;
 let memberStatsCache = null;
 let memberStatsRefreshTimer = null;
 let currentQuizIsReviewMode = false;
+let currentQuizReviewType = ""; // "current_wrong" | "history_wrong" | ""
 let authStateReady = false;
 let examSaveInProgress = false;
 const MEMBER_STATS_CACHE_TTL_MS = 3 * 60 * 1000;
@@ -520,6 +526,7 @@ function setMemberStatsLoading(message="正在讀取會員學習狀態..."){
   if($("practicedCountText")) $("practicedCountText").textContent = "...";
   if($("activeWrongCountText")) $("activeWrongCountText").textContent = "...";
   if($("masteredWrongCountText")) $("masteredWrongCountText").textContent = "...";
+  if($("wrongPracticeAttemptCountText")) $("wrongPracticeAttemptCountText").textContent = "...";
   if($("memberStatsHint")) $("memberStatsHint").textContent = message;
 }
 
@@ -707,14 +714,16 @@ function renderMemberStudyStats(stats, hintText=""){
   const practiced = Number(stats && stats.practicedCount || 0);
   const activeWrong = Number(stats && stats.activeWrongCount || 0);
   const masteredWrong = Number(stats && stats.masteredWrongCount || 0);
+  const wrongPracticeAttempts = Number(stats && stats.wrongPracticeAttemptCount || 0);
 
   if($("practicedCountText")) $("practicedCountText").textContent = practiced;
   if($("activeWrongCountText")) $("activeWrongCountText").textContent = activeWrong;
   if($("masteredWrongCountText")) $("masteredWrongCountText").textContent = masteredWrong;
+  if($("wrongPracticeAttemptCountText")) $("wrongPracticeAttemptCountText").textContent = wrongPracticeAttempts;
 
   const displayName = escapeHtml(getDisplayNameForLeaderboard());
   if($("memberStatsHint")){
-    $("memberStatsHint").innerHTML = hintText || `已登入：<b>${displayName}</b>。一般模擬考會自動排除已練習題目；錯題內容複習會抓目前未掌握錯題。`;
+    $("memberStatsHint").innerHTML = hintText || `已登入：<b>${displayName}</b>。一般模擬考會自動排除已練習題目；錯題內容複習會抓目前未掌握錯題。錯題複習每作答一題都會另外累積紀錄，答對後會標記為已掌握。`;
   }
 }
 
@@ -772,28 +781,36 @@ async function refreshMemberStudyStats(force=false){
     const statsSnap = await statsRef.get();
     let stats = statsSnap.exists ? (statsSnap.data() || {}) : null;
 
-    // 錯題仍採每題一份統計文件，因為需要保存 wrongCount、mastered 等個別狀態。
-    // 強制刷新、舊版資料或第一次登入時，才使用 count() 聚合校正錯題數。
+    // 錯題仍採每題一份統計文件，因為需要保存 wrongCount、mastered、reviewCount 等個別狀態。
+    // 強制刷新、舊版資料或第一次登入時，才使用 count() 聚合校正目前錯題 / 已掌握錯題數。
+    // 錯題複習累積作答次數保存在 stats/main，不在重建錯題數時清掉。
     if(force || !stats || stats.statsVersion !== "read_optimized_v2"){
+      const previousStats = stats || {};
       const activeWrongCount = await getAggregateCount(userDoc.collection("wrongStats").where("mastered", "==", false));
       const masteredWrongCount = await getAggregateCount(userDoc.collection("wrongStats").where("mastered", "==", true));
 
-      stats = {
+      await statsRef.set({
         activeWrongCount,
         masteredWrongCount,
         statsVersion:"read_optimized_v2",
         rebuiltAt: firebase.firestore.FieldValue.serverTimestamp(),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      };
+      }, {merge:true});
 
-      await statsRef.set(stats, {merge:true});
-      stats = {activeWrongCount, masteredWrongCount, statsVersion:"read_optimized_v2"};
+      stats = {
+        ...previousStats,
+        activeWrongCount,
+        masteredWrongCount,
+        statsVersion:"read_optimized_v2"
+      };
     }
 
     memberStatsCache = {
       practicedCount,
       activeWrongCount: Number(stats.activeWrongCount || 0),
       masteredWrongCount: Number(stats.masteredWrongCount || 0),
+      wrongPracticeAttemptCount: Number(stats.wrongPracticeAttemptCount || 0),
+      wrongPracticeSessionCount: Number(stats.wrongPracticeSessionCount || 0),
       cachedAt: Date.now()
     };
 
@@ -1354,7 +1371,12 @@ async function loadBank(){
   }
 }
 
-async function startQuiz(sourceQuestions = null){
+function getWrongPracticeRequestedCount(){
+  const input = $("wrongPracticeCountInput");
+  return Math.max(1, Number(input && input.value) || DEFAULT_QUESTION_COUNT);
+}
+
+async function startQuiz(sourceQuestions = null, reviewType = ""){
   if(examSaveInProgress){
     alert("上一回測驗紀錄仍在同步，請等同步完成後再開始下一回。");
     return;
@@ -1366,13 +1388,27 @@ async function startQuiz(sourceQuestions = null){
   if(!bank.length){ alert("題庫尚未讀取成功"); return; }
 
   // sourceQuestions 有值時代表「只練本次錯題」或「歷史錯題複習」。
-  // 這類是刻意複習，所以不套用已練習題目排除規則。
+  // 這類是刻意複習，所以不套用已練習題目排除規則，但會另外記錄錯題複習進度。
   if(Array.isArray(sourceQuestions) && sourceQuestions.length){
     currentQuizIsReviewMode = true;
-    quiz = shuffle(sourceQuestions);
+    currentQuizReviewType = reviewType || "wrong_review";
     mode = "instant";
+
+    const requestedReviewCount = getWrongPracticeRequestedCount();
+    const reviewCount = Math.min(requestedReviewCount, sourceQuestions.length);
+
+    // 歷史錯題已依 wrongCount 由高到低排序：先取最需要複習的 N 題，再打亂出題順序。
+    // 本次錯題則直接隨機抽 N 題。
+    quiz = currentQuizReviewType === "history_wrong"
+      ? shuffle(sourceQuestions.slice(0, reviewCount))
+      : shuffle(sourceQuestions).slice(0, reviewCount);
+
+    if(requestedReviewCount > sourceQuestions.length && $("loadMsg")){
+      $("loadMsg").textContent = `錯題練習設定 ${requestedReviewCount} 題，但目前只有 ${sourceQuestions.length} 題可用，本次將練習全部 ${reviewCount} 題。`;
+    }
   }else{
     currentQuizIsReviewMode = false;
+    currentQuizReviewType = "";
     mode = $("modeInput").value;
     let pool = getSelectedQuestions();
     if(!pool.length){
@@ -1565,9 +1601,11 @@ async function finishQuiz(){
       alert("本回已練習題目同步失敗。為避免下次重複抽到，請確認網路與 Firestore 權限後再重新開始。");
     }
 
-    // 錯題與排行榜可以平行同步。
+    // 錯題、錯題複習進度與排行榜可以平行同步。
+    // 錯題複習時會額外更新 reviewCount / mastered，讓「練過幾次」與「是否已掌握」都有紀錄。
     await Promise.all([
       saveWrongStatsIfLoggedIn(),
+      currentQuizIsReviewMode ? saveWrongPracticeProgressIfLoggedIn() : Promise.resolve(true),
       saveExamResultIfLoggedIn({score, total, correctCount, wrongCount, rate, mode})
     ]);
   }finally{
@@ -1647,7 +1685,7 @@ function practiceWrong(){
     alert("這次沒有錯題可以練習");
     return;
   }
-  startQuiz(wrongItems);
+  startQuiz(wrongItems, "current_wrong");
 }
 
 function questionNo(item){
@@ -1690,6 +1728,18 @@ function buildWrongStatsPayload(){
     questionNo: getQuestionKey(a.item),
     scope: a.item.scope || "未分類",
     type: a.item.type || "",
+    lastSelected: selectedAnswerText(a),
+    correctAnswer: correctAnswerText(a)
+  })).filter(x => x.questionNo);
+}
+
+function buildWrongPracticeProgressPayload(){
+  if(!currentQuizIsReviewMode) return [];
+  return answers.map(a => ({
+    questionNo: getQuestionKey(a.item),
+    scope: a.item.scope || "未分類",
+    type: a.item.type || "",
+    isCorrect: !!a.isCorrect,
     lastSelected: selectedAnswerText(a),
     correctAnswer: correctAnswerText(a)
   })).filter(x => x.questionNo);
@@ -2290,6 +2340,79 @@ async function loadLeaderboard(){
   }
 }
 
+async function saveWrongPracticeProgressIfLoggedIn(){
+  const payload = buildWrongPracticeProgressPayload();
+  if(!payload.length) return true;
+
+  const box = $("weakPoint");
+  if(!currentUser || !db){
+    if(box) box.innerHTML += `<br><span class="muted small">目前是訪客模式，本次錯題複習作答不會寫入雲端進度。</span>`;
+    return true;
+  }
+
+  try{
+    const now = firebase.firestore.FieldValue.serverTimestamp();
+    let masteredThisRound = 0;
+
+    for(let i = 0; i < payload.length; i += 450){
+      const chunk = payload.slice(i, i + 450);
+      const batch = db.batch();
+
+      chunk.forEach(item => {
+        const ref = db.collection("users").doc(currentUser.uid).collection("wrongStats").doc(safeDocId(item.questionNo));
+        const update = {
+          questionNo: item.questionNo,
+          scope: item.scope,
+          type: item.type,
+          reviewCount: firebase.firestore.FieldValue.increment(1),
+          lastReviewedAt: now,
+          lastReviewCorrect: item.isCorrect,
+          updatedAt: now
+        };
+
+        if(item.isCorrect){
+          masteredThisRound++;
+          update.correctReviewCount = firebase.firestore.FieldValue.increment(1);
+          update.mastered = true;
+          update.masteredAt = now;
+          update.lastCorrectAt = now;
+        }else{
+          update.wrongReviewCount = firebase.firestore.FieldValue.increment(1);
+          update.mastered = false;
+          update.lastReviewWrongAt = now;
+          update.lastSelected = item.lastSelected;
+          update.correctAnswer = item.correctAnswer;
+        }
+
+        batch.set(ref, update, {merge:true});
+      });
+
+      await batch.commit();
+    }
+
+    // 另外保存總複習作答量，讓同一題重複複習時仍會有「練習過」的累積紀錄。
+    await db.collection("users").doc(currentUser.uid).collection("stats").doc("main").set({
+      wrongPracticeAttemptCount: firebase.firestore.FieldValue.increment(payload.length),
+      wrongPracticeSessionCount: firebase.firestore.FieldValue.increment(1),
+      lastWrongPracticeAt: now,
+      lastWrongPracticeType: currentQuizReviewType || "wrong_review",
+      updatedAt: now
+    }, {merge:true});
+
+    invalidateMemberStatsCache();
+    scheduleMemberStatsRefresh(300);
+
+    if(box){
+      box.innerHTML += `<br><span class="muted small">已記錄本回錯題複習 ${payload.length} 題；其中 ${masteredThisRound} 題答對並標記為已掌握。錯題複習作答次數會持續累積。</span>`;
+    }
+    return true;
+  }catch(e){
+    console.error("錯題複習進度同步失敗", e);
+    if(box) box.innerHTML += `<br><span class="muted small">錯題複習進度同步失敗：${escapeHtml(firebaseErrorMessage(e))}</span>`;
+    return false;
+  }
+}
+
 async function saveWrongStatsIfLoggedIn(){
   const payload = buildWrongStatsPayload();
   if(!payload.length) return;
@@ -2383,7 +2506,7 @@ async function practiceHistoryWrong(){
     if(missing.length){
       alert(`有 ${missing.length} 題歷史錯題在目前題庫找不到，會先練找得到的 ${wrongItems.length} 題。`);
     }
-    startQuiz(wrongItems);
+    startQuiz(wrongItems, "history_wrong");
   }catch(e){
     alert("讀取歷史錯題失敗：" + firebaseErrorMessage(e));
   }
